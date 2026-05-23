@@ -3,7 +3,7 @@ import { useMatch } from '../context/MatchContext'
 import { useGroups } from '../context/GroupContext'
 import { getRandomNickname } from '../utils/commentary'
 import { generateShareCode } from '../utils/matchUtils'
-import { parseVoiceCreateMatch, generateAIPlayerNames, correctTranscript, extractNamesFromVoice } from '../utils/groq'
+import { parseVoiceCreateMatch, generateAIPlayerNames, correctTranscript } from '../utils/groq'
 
 const COLORS = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9']
 const PLAYER_SUGGESTIONS_A = ['Virat', 'Rohit', 'Dhoni', 'Sachin', 'Bumrah', 'Jadeja', 'Shami', 'Kohli', 'Pant', 'Hardik']
@@ -156,16 +156,11 @@ export default function CreateMatchScreen({ onNavigate }) {
     const makePlayers = (names) =>
       names.map((name, i) => ({ id: Date.now().toString() + Math.random(), name, color: COLORS[i % COLORS.length] }))
 
-    // Strip framing and extract clean names
-    const cleanNames = extractNamesFromVoice(text)
-    const rawNames = cleanNames.length > 0
-      ? cleanNames
-      : text.split(/[,;और,and]+/).map(n => n.trim()).filter(n => n.length > 0 && n.length < 30)
+    const rawNames = text.split(/[,;और,and]+/).map(n => n.trim()).filter(n => n.length > 0 && n.length < 30)
     if (rawNames.length === 0) return
     const names = resolveNames(rawNames)
 
-    const isSet = lower.includes('players are') || lower.includes('team a is') || lower.includes('team b is') || lower.includes('are') ||
-                  lower.includes('name is') || lower.includes('player name')
+    const isSet = lower.includes('players are') || lower.includes('team a is') || lower.includes('team b is') || lower.includes('are')
     const isTeamA = lower.includes('team a') || (teamA && lower.includes(teamA.toLowerCase()))
     const isTeamB = lower.includes('team b') || (teamB && lower.includes(teamB.toLowerCase()))
 

@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useRef } from 'react'
 import { useGroups } from '../context/GroupContext'
-import { correctTranscript, extractNamesFromVoice } from '../utils/groq'
+import { correctTranscript } from '../utils/groq'
 
 const STAT_CATEGORIES = {
   batting: [
@@ -123,11 +123,11 @@ export default function GroupDashboard({ onNavigate }) {
           const corrected = await correctTranscript(text, { groupPlayers: group?.players?.map(p => p.name) || [] })
           if (corrected) text = corrected
           setVoiceInput(text)
-          const names = extractNamesFromVoice(text)
+          const names = text.split(/[,;और,and]+/).map(n => n.trim()).filter(n => n.length > 0 && n.length < 30)
           if (names.length > 1) {
             addBulkPlayersToGroup(group.id, names)
-          } else if (names.length === 1) {
-            addPlayerToGroup(group.id, names[0])
+          } else if (text.trim().length > 0) {
+            addPlayerToGroup(group.id, text.trim())
           }
           setVoiceInput('')
           bestText = ''

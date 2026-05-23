@@ -34,23 +34,6 @@ async function groqCompletion(messages, maxTokens = 256) {
   return data.choices[0].message.content
 }
 
-// Strip command framing phrases like "team a name is x" → "x"
-export function extractNamesFromVoice(text) {
-  let t = text.trim()
-  // Remove common framing phrases (case-insensitive)
-  t = t.replace(/\b(team\s+[ab]\s+)?(player\s+)?name\s+is\b/gi, '')
-  t = t.replace(/\b(team\s+[ab]\s+)?players?\s+are\b/gi, '')
-  t = t.replace(/\badd\s+(player|name)?\s*/gi, '')
-  t = t.replace(/\bset\s+(player|name|team\s+[ab])?\s*/gi, '')
-  t = t.replace(/\bto\s+team\s+[ab]\b/gi, '')
-  t = t.replace(/\bplayer\s+name\b/gi, '')
-  t = t.replace(/\bname\s+is\b/gi, '')
-  t = t.trim()
-  // Split by common separators
-  const names = t.split(/[,;और,and]+/).map(n => n.trim()).filter(n => n.length > 0 && n.length < 30)
-  return names
-}
-
 // Client-side correction map for common speech recognition errors
 const CORRECTION_MAP = {
   'te m': 'team', 'te m b': 'team b', 'te m a': 'team a',
