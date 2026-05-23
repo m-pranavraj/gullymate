@@ -45,7 +45,6 @@ export default function GroupDashboard({ onNavigate }) {
   const [isVoiceListening, setIsVoiceListening] = useState(false)
   const [copiedShare, setCopiedShare] = useState(false)
   const voiceRecognitionRef = useRef(null)
-  const voiceSilenceTimerRef = useRef(null)
 
   const group = activeGroup || (groups.length > 0 ? groups[0] : null)
 
@@ -85,56 +84,47 @@ export default function GroupDashboard({ onNavigate }) {
 
     const recognition = new SpeechRecognition()
     recognition.lang = 'en-US'
-    recognition.continuous = true
+    recognition.continuous = false
     recognition.interimResults = true
     recognition.maxAlternatives = 3
     voiceRecognitionRef.current = recognition
     setIsVoiceListening(true)
     setVoiceInput('')
 
-    const resetSilenceTimer = () => {
-      if (voiceSilenceTimerRef.current) clearTimeout(voiceSilenceTimerRef.current)
-      voiceSilenceTimerRef.current = setTimeout(() => {
-        recognition.stop()
-        setIsVoiceListening(false)
-      }, 7000)
-    }
-    resetSilenceTimer()
-
-    let bestText = ''
+    let finalText = ''
 
     recognition.onresult = (event) => {
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const result = event.results[i]
-        if (result.isFinal) {
-          let topChoice = result[0].transcript
-          for (let j = 1; j < result.length; j++) {
-            if (result[j].confidence > result[0].confidence) {
-              topChoice = result[j].transcript
-            }
-          }
-          bestText = bestText ? bestText + ' ' + topChoice : topChoice
-        }
+      // Show interim text for visual feedback
+      const last = event.results[event.results.length - 1]
+      if (!last?.isFinal) {
+        const partial = Array.from(event.results).map(r => r[0].transcript).join(' ')
+        setVoiceInput(partial)
+        return
       }
-      setVoiceInput(bestText)
-      resetSilenceTimer()
+      // Pick the best confidence choice from the final result
+      let top = last[0].transcript
+      for (let j = 1; j < last.length; j++) {
+        if (last[j].confidence > last[0].confidence) top = last[j].transcript
+      }
+      finalText = top
+      setVoiceInput(finalText)
+    }
 
-      if (event.results[event.results.length - 1]?.isFinal && bestText.trim()) {
-          const text = bestText
-          setVoiceInput(text)
-          // Directly split by separators and add — no AI, no stripping, no over-action
-          const names = text.split(/[,;और,and]+/).map(n => n.trim()).filter(n => n.length > 0 && n.length < 30)
-          if (names.length > 1) {
-            addBulkPlayersToGroup(group.id, names)
-          } else if (text.trim().length > 0) {
-            addPlayerToGroup(group.id, text.trim())
-          }
-          setVoiceInput('')
-          bestText = ''
+    recognition.onend = () => {
+      setIsVoiceListening(false)
+      if (finalText.trim()) {
+        const names = finalText.trim().split(/[,;और,and]+/).map(n => n.trim()).filter(n => n.length > 0 && n.length < 30)
+        if (names.length > 1) {
+          addBulkPlayersToGroup(group.id, names)
+        } else {
+          addPlayerToGroup(group.id, finalText.trim())
+        }
+        setVoiceInput('')
+        finalText = ''
       }
     }
-    recognition.onerror = () => { setIsVoiceListening(false); bestText = '' }
-    recognition.onend = () => { setIsVoiceListening(false); bestText = '' }
+
+    recognition.onerror = () => { setIsVoiceListening(false) }
     recognition.start()
   }, [group, addPlayerToGroup, addBulkPlayersToGroup, isVoiceListening])
 
