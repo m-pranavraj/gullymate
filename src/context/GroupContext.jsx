@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useEffect } from 'react'
+import { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react'
 import { storage } from '../utils/storage'
 import { getSupabase, isSupabaseConfigured, STORAGE_KEYS } from '../lib/supabase'
 import { useAuth } from './AuthContext'
@@ -8,11 +8,17 @@ const GroupContext = createContext(null)
 export function GroupProvider({ children }) {
   const { user } = useAuth()
   const [groups, setGroups] = useState(() => storage.get(STORAGE_KEYS.GROUPS) || [])
-  const [activeGroup, setActiveGroup] = useState(() => storage.get(STORAGE_KEYS.ACTIVE_GROUP) || null)
+  const [activeGroupId, setActiveGroupId] = useState(() => {
+    const saved = storage.get(STORAGE_KEYS.ACTIVE_GROUP)
+    return saved?.id || null
+  })
+
+  // Derive activeGroup live from groups array — always up to date
+  const activeGroup = useMemo(() => groups.find(g => g.id === activeGroupId) || null, [groups, activeGroupId])
 
   // Persist to localStorage
   useEffect(() => { storage.set(STORAGE_KEYS.GROUPS, groups) }, [groups])
-  useEffect(() => { storage.set(STORAGE_KEYS.ACTIVE_GROUP, activeGroup) }, [activeGroup])
+  useEffect(() => { storage.set(STORAGE_KEYS.ACTIVE_GROUP, activeGroup ? { id: activeGroup.id } : null) }, [activeGroup])
 
   // Sync from Supabase on mount for logged-in users
   useEffect(() => {
@@ -111,7 +117,7 @@ export function GroupProvider({ children }) {
 
   const deleteGroup = useCallback(async (groupId) => {
     setGroups(prev => prev.filter(g => g.id !== groupId))
-    setActiveGroup(prev => prev?.id === groupId ? null : prev)
+    setActiveGroupId(prev => prev === groupId ? null : prev)
     const sb = getSupabase()
     if (sb && !user?.isGuest) await sb.from('groups').delete().eq('id', groupId)
   }, [user])
@@ -249,9 +255,8 @@ export function GroupProvider({ children }) {
   const getGroup = useCallback((id) => groups.find(g => g.id === id) || null, [groups])
 
   const setActiveGroupById = useCallback((id) => {
-    const g = groups.find(grp => grp.id === id)
-    setActiveGroup(g || null)
-  }, [groups])
+    setActiveGroupId(id)
+  }, [])
 
   const resetGroupStats = useCallback((groupId) => {
     setGroups(prev => prev.map(g => {
