@@ -57,6 +57,7 @@ export function AuthProvider({ children }) {
     if (sb) {
       const { data, error } = await sb.auth.signInWithPassword({ email, password })
       if (error) throw new Error(error.message === 'Invalid login credentials' ? 'Invalid email or password' : error.message)
+      if (!data.user) throw new Error('Login failed. Try again.')
       const meta = data.user?.user_metadata || {}
       const u = { id: data.user.id, email: data.user.email, name: meta.name || email.split('@')[0], isGuest: false, supabase: true }
       setUser(u)
@@ -82,6 +83,7 @@ export function AuthProvider({ children }) {
         throw new Error(error.message)
       }
       if (data.user?.identities?.length === 0) throw new Error('Email already registered')
+      if (!data.user) throw new Error('Account created! Check your email to confirm.')
       const u = { id: data.user.id, email: data.user.email, name, isGuest: false, supabase: true }
       setUser(u)
 
