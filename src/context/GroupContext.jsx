@@ -1,0 +1,289 @@
+import { createContext, useContext, useState, useCallback, useEffect } from 'react'
+import { storage } from '../utils/storage'
+import { getSupabase, isSupabaseConfigured, STORAGE_KEYS } from '../lib/supabase'
+import { useAuth } from './AuthContext'
+
+const GroupContext = createContext(null)
+
+export function GroupProvider({ children }) {
+  const { user } = useAuth()
+  const [groups, setGroups] = useState(() => storage.get(STORAGE_KEYS.GROUPS) || [])
+  const [activeGroup, setActiveGroup] = useState(() => storage.get(STORAGE_KEYS.ACTIVE_GROUP) || null)
+
+  // Persist to localStorage
+  useEffect(() => { storage.set(STORAGE_KEYS.GROUPS, groups) }, [groups])
+  useEffect(() => { storage.set(STORAGE_KEYS.ACTIVE_GROUP, activeGroup) }, [activeGroup])
+
+  // Sync from Supabase on mount for logged-in users
+  useEffect(() => {
+    const sb = getSupabase()
+    if (!sb || !user?.id || user?.isGuest) return
+
+    const loadGroups = async () => {
+      try {
+        const { data: remoteGroups, error } = await sb
+          .from('groups')
+          .select('*, group_players(*)')
+          .eq('owner_id', user.id)
+
+        if (error) throw error
+        if (remoteGroups && remoteGroups.length > 0) {
+          // Transform to local format
+          const local = remoteGroups.map(g => ({
+            id: g.id,
+            name: g.name,
+            createdAt: new Date(g.created_at).getTime(),
+            ownerId: g.owner_id,
+            players: (g.group_players || []).map(p => ({
+              name: p.name,
+              userId: p.user_id,
+              claimed: p.claimed,
+              stats: { matches: 0, runs: 0, balls: 0, fours: 0, sixes: 0, wickets: 0, overs: 0, runsConceded: 0, catches: 0, stumpings: 0, fifties: 0, hundreds: 0, notOuts: 0, ducks: 0, highestScore: 0 },
+              history: [],
+            })),
+            matches: [],
+            activityLog: [],
+          }))
+          setGroups(prev => {
+            const merged = [...local]
+            // Merge local matches/activity into remote groups
+            prev.forEach(lg => {
+              const existing = merged.find(m => m.id === lg.id)
+              if (existing) {
+                existing.matches = lg.matches || []
+                existing.activityLog = lg.activityLog || []
+                existing.players = existing.players.map(ep => {
+                  const lp = lg.players.find(p => p.name === ep.name)
+                  return lp ? { ...ep, stats: lp.stats, history: lp.history } : ep
+                })
+              } else {
+                merged.push(lg)
+              }
+            })
+            return merged
+          })
+        }
+      } catch (e) {
+        console.warn('Supabase group sync failed, using local:', e)
+      }
+    }
+    loadGroups()
+  }, [user?.id, user?.isGuest])
+
+  const syncGroupToSupabase = useCallback(async (group) => {
+    const sb = getSupabase()
+    if (!sb || !user?.id || user?.isGuest) return
+    try {
+      await sb.from('groups').upsert({
+        id: group.id,
+        owner_id: user.id,
+        name: group.name,
+        created_at: new Date(group.createdAt).toISOString(),
+      }).select().single()
+      for (const p of group.players) {
+        await sb.from('group_players').upsert({
+          group_id: group.id,
+          name: p.name,
+          user_id: p.userId || null,
+          claimed: p.claimed || false,
+        }, { onConflict: 'group_id, name' })
+      }
+    } catch (e) {
+      console.warn('Supabase group sync error:', e)
+    }
+  }, [user?.id, user?.isGuest])
+
+  const createGroup = useCallback((name) => {
+    const group = {
+      id: Date.now().toString(),
+      name: name.trim(),
+      createdAt: Date.now(),
+      ownerId: user?.id || null,
+      players: [],
+      matches: [],
+      activityLog: [],
+    }
+    setGroups(prev => [...prev, group])
+    addActivityToGroup(group.id, 'System', `Group "${name}" created`)
+    syncGroupToSupabase(group)
+    return group
+  }, [user, syncGroupToSupabase])
+
+  const deleteGroup = useCallback(async (groupId) => {
+    setGroups(prev => prev.filter(g => g.id !== groupId))
+    setActiveGroup(prev => prev?.id === groupId ? null : prev)
+    const sb = getSupabase()
+    if (sb && !user?.isGuest) await sb.from('groups').delete().eq('id', groupId)
+  }, [user])
+
+  const addPlayerToGroup = useCallback((groupId, playerName) => {
+    setGroups(prev => prev.map(g => {
+      if (g.id !== groupId) return g
+      if (g.players.find(p => p.name.toLowerCase() === playerName.toLowerCase())) return g
+      const player = {
+        name: playerName,
+        userId: null,
+        claimed: false,
+        stats: { matches: 0, runs: 0, balls: 0, fours: 0, sixes: 0, wickets: 0, overs: 0, runsConceded: 0, catches: 0, stumpings: 0, fifties: 0, hundreds: 0, notOuts: 0, ducks: 0, highestScore: 0 },
+        history: [],
+      }
+      const updated = { ...g, players: [...g.players, player] }
+      syncGroupToSupabase(updated)
+      return updated
+    }))
+    addActivityToGroup(groupId, 'System', `Player "${playerName}" added`)
+  }, [syncGroupToSupabase])
+
+  const removePlayerFromGroup = useCallback((groupId, playerName) => {
+    setGroups(prev => prev.map(g => {
+      if (g.id !== groupId) return g
+      const updated = { ...g, players: g.players.filter(p => p.name !== playerName) }
+      syncGroupToSupabase(updated)
+      return updated
+    }))
+    addActivityToGroup(groupId, 'System', `Player "${playerName}" removed`)
+  }, [syncGroupToSupabase])
+
+  const addBulkPlayersToGroup = useCallback((groupId, names) => {
+    setGroups(prev => prev.map(g => {
+      if (g.id !== groupId) return g
+      const existing = new Set(g.players.map(p => p.name.toLowerCase()))
+      const newPlayers = names
+        .filter(n => !existing.has(n.toLowerCase()))
+        .map(name => ({
+          name,
+          userId: null,
+          claimed: false,
+          stats: { matches: 0, runs: 0, balls: 0, fours: 0, sixes: 0, wickets: 0, overs: 0, runsConceded: 0, catches: 0, stumpings: 0, fifties: 0, hundreds: 0, notOuts: 0, ducks: 0, highestScore: 0 },
+          history: [],
+        }))
+      const updated = { ...g, players: [...g.players, ...newPlayers] }
+      syncGroupToSupabase(updated)
+      return updated
+    }))
+    addActivityToGroup(groupId, 'System', `${names.length} players added`)
+  }, [syncGroupToSupabase])
+
+  const recordMatchForGroup = useCallback((groupId, matchData, battingStatsA, battingStatsB, ballHistory) => {
+    setGroups(prev => prev.map(g => {
+      if (g.id !== groupId) return g
+
+      const updatedPlayers = g.players.map(p => {
+        const stats = { ...p.stats }
+        const battedA = (battingStatsA || []).find(s => s.name === p.name)
+        const battedB = (battingStatsB || []).find(s => s.name === p.name)
+        const batted = battedA || battedB
+        const bowledIn = (ballHistory || []).filter(b => b.bowler === p.name)
+
+        const historyEntry = {
+          matchId: matchData.id || Date.now().toString(),
+          date: matchData.date || Date.now(),
+          teamA: matchData.teamA, teamB: matchData.teamB,
+          runs: batted?.runs || 0,
+          balls: batted?.balls || 0,
+          fours: batted?.fours || 0,
+          sixes: batted?.sixes || 0,
+          out: batted?.out || false,
+          wickets: bowledIn.filter(b => b.type === 'wicket').length,
+          runsConceded: bowledIn.reduce((a, b) => a + (b.runs || 0), 0),
+          overs: bowledIn.filter(b => b.label !== 'WD' && b.label !== 'NB').length,
+        }
+
+        if (batted) {
+          stats.matches += 1
+          stats.runs += batted.runs || 0
+          stats.balls += batted.balls || 0
+          stats.fours += batted.fours || 0
+          stats.sixes += batted.sixes || 0
+          if (!batted.out) stats.notOuts += 1
+          if (batted.runs >= 100) stats.hundreds += 1
+          else if (batted.runs >= 50) stats.fifties += 1
+          if (batted.runs === 0 && batted.out) stats.ducks += 1
+          if (batted.runs > stats.highestScore) stats.highestScore = batted.runs
+        }
+        if (bowledIn.length > 0) {
+          if (!batted) stats.matches += 1
+          const legalBalls = bowledIn.filter(b => b.label !== 'WD' && b.label !== 'NB').length
+          stats.overs += legalBalls
+          stats.runsConceded += bowledIn.reduce((a, b) => a + (b.runs || 0), 0)
+          stats.wickets += bowledIn.filter(b => b.type === 'wicket').length
+        }
+        return { ...p, stats, history: [...(p.history || []), historyEntry] }
+      })
+
+      const matchRecord = {
+        id: matchData.id || Date.now().toString(),
+        date: Date.now(),
+        teamA: matchData.teamA, teamB: matchData.teamB,
+        scoreA: matchData.scoreA, wicketsA: matchData.wicketsA,
+        scoreB: matchData.scoreB, wicketsB: matchData.wicketsB,
+        winner: matchData.winner, ground: matchData.ground,
+      }
+
+      const updated = { ...g, players: updatedPlayers, matches: [matchRecord, ...g.matches].slice(0, 200) }
+
+      // Also log to Supabase activities
+      const recSb = getSupabase()
+      if (recSb && user?.id && !user?.isGuest) {
+        recSb.from('activities').insert({
+          group_id: groupId,
+          user_id: user.id,
+          user_name: user.name,
+          action: `Match recorded: ${matchData.teamA} vs ${matchData.teamB}`,
+        }).then().catch(() => {})
+      }
+
+      return updated
+    }))
+    addActivityToGroup(groupId, 'System', `Match recorded: ${matchData.teamA} vs ${matchData.teamB}`)
+  }, [user])
+
+  const addActivityToGroup = useCallback((groupId, userName, action) => {
+    setGroups(prev => prev.map(g => {
+      if (g.id !== groupId) return g
+      const activity = { id: Date.now().toString() + Math.random(), user: userName, action, timestamp: Date.now() }
+      return { ...g, activityLog: [activity, ...g.activityLog].slice(0, 200) }
+    }))
+  }, [])
+
+  const getGroup = useCallback((id) => groups.find(g => g.id === id) || null, [groups])
+
+  const setActiveGroupById = useCallback((id) => {
+    const g = groups.find(grp => grp.id === id)
+    setActiveGroup(g || null)
+  }, [groups])
+
+  const resetGroupStats = useCallback((groupId) => {
+    setGroups(prev => prev.map(g => {
+      if (g.id !== groupId) return g
+      return {
+        ...g,
+        players: g.players.map(p => ({
+          ...p,
+          stats: { matches: 0, runs: 0, balls: 0, fours: 0, sixes: 0, wickets: 0, overs: 0, runsConceded: 0, catches: 0, stumpings: 0, fifties: 0, hundreds: 0, notOuts: 0, ducks: 0, highestScore: 0 },
+          history: [],
+        })),
+        matches: [],
+      }
+    }))
+    addActivityToGroup(groupId, 'System', 'All stats reset')
+  }, [])
+
+  return (
+    <GroupContext.Provider value={{
+      groups, activeGroup,
+      createGroup, deleteGroup, getGroup,
+      addPlayerToGroup, removePlayerFromGroup, addBulkPlayersToGroup,
+      recordMatchForGroup, addActivityToGroup,
+      setActiveGroupById, resetGroupStats,
+    }}>
+      {children}
+    </GroupContext.Provider>
+  )
+}
+
+export const useGroups = () => {
+  const ctx = useContext(GroupContext)
+  if (!ctx) throw new Error('useGroups must be used within GroupProvider')
+  return ctx
+}

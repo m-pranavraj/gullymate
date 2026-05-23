@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏏</text></svg>" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#0a0a1a" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>Gully Cricket</title>
+    <style>
+      [data-theme="light"] {
+        --bg-primary: #f0f2f5;
+        --bg-card: rgba(255,255,255,0.9);
+        --bg-card-border: rgba(0,0,0,0.08);
+        --text-primary: #1a1a2e;
+        --text-secondary: #555;
+        --text-muted: #888;
+        --border-color: rgba(0,0,0,0.08);
+      }
+      [data-theme="light"] .bg-pitch-dark { background: var(--bg-primary) !important; }
+      [data-theme="light"] .from-pitch-dark { --tw-gradient-from: var(--bg-primary) !important; }
+      [data-theme="light"] .via-pitch-dark { --tw-gradient-via: var(--bg-primary) !important; }
+      [data-theme="light"] .via-\[#0d0d25\] { --tw-gradient-via: #e0e4ea !important; }
+      [data-theme="light"] .to-blue-950 { --tw-gradient-to: #d0d8e0 !important; }
+      [data-theme="light"] .text-white, [data-theme="light"] .text-zinc-50, [data-theme="light"] .text-zinc-100, [data-theme="light"] .text-zinc-200, [data-theme="light"] .text-zinc-300 { color: var(--text-primary) !important; }
+      [data-theme="light"] .text-gray-400, [data-theme="light"] .text-zinc-400, [data-theme="light"] .text-zinc-500, [data-theme="light"] .text-zinc-600, [data-theme="light"] .text-gray-500 { color: var(--text-secondary) !important; }
+      [data-theme="light"] .text-zinc-700 { color: var(--text-primary) !important; }
+      [data-theme="light"] .border-white\/5, [data-theme="light"] .border-white\/10, [data-theme="light"] .border-zinc-800, [data-theme="light"] .border-zinc-800\/50, [data-theme="light"] .border-zinc-800\/30 { border-color: var(--border-color) !important; }
+      [data-theme="light"] .bg-white\/5, [data-theme="light"] .bg-white\/10, [data-theme="light"] .bg-zinc-800, [data-theme="light"] .bg-zinc-800\/50, [data-theme="light"] .bg-zinc-800\/80, [data-theme="light"] .bg-zinc-900\/50 { background: var(--bg-card) !important; }
+      [data-theme="light"] .card-glass { background: var(--bg-card) !important; border-color: var(--bg-card-border) !important; }
+      [data-theme="light"] .placeholder-gray-600::placeholder { color: #999 !important; }
+      [data-theme="light"] .bg-zinc-900\/50 { background: rgba(200,200,210,0.5) !important; }
+      [data-theme="light"] .bg-zinc-700 { background: #d0d4dc !important; }
+      [data-theme="light"] .text-zinc-700 { color: var(--text-primary) !important; }
+      [data-theme="light"] .bg-black\/90 { background: rgba(240,242,245,0.95) !important; }
+      [data-theme="light"] .score-btn { border-color: rgba(0,0,0,0.15) !important; }
+      [data-theme="light"] input, [data-theme="light"] textarea, [data-theme="light"] select { background: rgba(255,255,255,0.9) !important; border-color: rgba(0,0,0,0.12) !important; color: var(--text-primary) !important; }
+      [data-theme="light"] .bg-white\/5, [data-theme="light"] .bg-white\/10 { background: rgba(255,255,255,0.7) !important; }
+      [data-theme="light"] .text-gradient { background-clip: text !important; }
+    </style>
+    <style>
+      * { -webkit-tap-highlight-color: transparent; }
+      body { overscroll-behavior: none; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
