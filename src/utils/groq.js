@@ -34,6 +34,100 @@ async function groqCompletion(messages, maxTokens = 256) {
   return data.choices[0].message.content
 }
 
+// Client-side correction map for common speech recognition errors
+const CORRECTION_MAP = {
+  'te m': 'team', 'te m b': 'team b', 'te m a': 'team a',
+  'te m be pl re': 'team b players', 'te m a pl re': 'team a players',
+  'play re': 'players', 'play r': 'player', 'ple re': 'players',
+  'play is': 'players', 'ple s': 'players',
+  'ad d': 'add', 'ad d to': 'add to', 'ad d pl re': 'add players',
+  'in g': 'innings', 'in ngs': 'innings', 'inn gs': 'innings',
+  'batt ng': 'batting', 'ba ll ng': 'bowling', 'bowl ng': 'bowling',
+  'toss': 'toss', 'to ss': 'toss',
+  'grou nd': 'ground', 'gro und': 'ground',
+  'sha f le': 'shuffle', 'shu f le': 'shuffle',
+  'sta rt': 'start', 'st art': 'start',
+  'cr eat': 'create', 'cr eate': 'create',
+  'vo lt': 'bowl', 'bo lt': 'bowl', 'bo l': 'bowl',
+  'ba t': 'bat', 'ba tt': 'bat',
+  'win ner': 'winner', 'win er': 'winner',
+  'scor e': 'score', 'scor': 'score',
+  's1 x': 'six', 's x': 'six', 'sax': 'six',
+  'fo r': 'four', 'fou r': 'four',
+  'thre e': 'three', 'thr ee': 'three',
+  'tw o': 'two', 't o': 'two',
+  'on e': 'one', 'o ne': 'one',
+  'sant sh': 'santosh', 'sant h': 'santosh', 'santh sh': 'santosh',
+  'pran v': 'pranav', 'pr nav': 'pranav',
+  'rah l': 'rahul', 'ra hul': 'rahul',
+  'vir t': 'virat', 'vir t': 'virat',
+  'roh t': 'rohit', 'roh t': 'rohit',
+  'sach n': 'sachin', 'sachin': 'sachin',
+  'dh ni': 'dhoni', 'dh n': 'dhoni',
+  'bumr h': 'bumrah', 'bumr h': 'bumrah',
+  'jad ja': 'jadeja', 'jadja': 'jadeja',
+  'hard k': 'hardik', 'hard k': 'hardik',
+}
+
+function applyLocalCorrections(text) {
+  let cleaned = text.toLowerCase().trim()
+  // Remove filler words
+  cleaned = cleaned.replace(/\b(uh|um|ah|er|hmm|like|actually|basically|literally)\b/gi, '')
+  // Normalize spacing
+  cleaned = cleaned.replace(/\s+/g, ' ').trim()
+  // Apply correction map
+  for (const [wrong, right] of Object.entries(CORRECTION_MAP)) {
+    const regex = new RegExp('\\b' + wrong.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'gi')
+    cleaned = cleaned.replace(regex, right)
+  }
+  // Normalize common separator words
+  cleaned = cleaned.replace(/\band\b/gi, ',').replace(/\s*,\s*/g, ', ')
+  return cleaned
+}
+
+// AI-powered transcript correction using Groq
+export async function correctTranscript(rawText, context = {}) {
+  if (!rawText || !rawText.trim()) return rawText
+
+  // First apply local corrections
+  const localCorrected = applyLocalCorrections(rawText)
+  if (!localCorrected || localCorrected.split(/\s+/).length < 2) return localCorrected
+
+  const groupInfo = context.groupPlayers?.length
+    ? `Consider these known player names: ${JSON.stringify(context.groupPlayers)}. Match spoken names to the closest known player name.`
+    : ''
+
+  const systemPrompt = `You are a speech recognition error corrector for a cricket scoring app. Fix the user's spoken transcript.
+Rules:
+- Fix garbled/corrupted words to the nearest cricket term
+- Recognize Indian cricket player names
+- Convert Hinglish to English cricket terms
+- Keep team names as-is if they sound like team names
+- Return ONLY the corrected text, nothing else
+
+Examples:
+- "te m be pl re are sant sh pran v sa" → "Team B players are Santosh Pranav Sai"
+- "ad d rah l to te m a" → "Add Rahul to Team A"
+- "te m a is vk boys te m b is t tans" → "Team A is VK Boys Team B is Titans"
+- "s x chauka fo r s1 x" → "six four six"
+- "st art the m tch" → "start the match"
+- "tea m a won the to ss and ch se to ba t" → "Team A won the toss and chose to bat"
+
+${groupInfo}
+Return ONLY the corrected text.`
+
+  try {
+    const result = await groqCompletion([
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: rawText }
+    ], 200)
+    return result.trim()
+  } catch {
+    // Fallback: return local corrections if AI fails
+    return localCorrected
+  }
+}
+
 export async function parseVoiceCreateMatch(text, groupContext = null) {
   const groupInfo = groupContext ? `Available group players: ${JSON.stringify(groupContext)}` : ''
   const systemPrompt = `You are Gully AI, a voice parser for a gully cricket match creation app.

@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback, useRef } from 'react'
 import { useGroups } from '../context/GroupContext'
+import { correctTranscript } from '../utils/groq'
 
 const STAT_CATEGORIES = {
   batting: [
@@ -117,15 +118,20 @@ export default function GroupDashboard({ onNavigate }) {
       resetSilenceTimer()
 
       if (event.results[event.results.length - 1]?.isFinal && bestText.trim()) {
-        const text = bestText
-        const names = text.split(/[,;और,and]+/).map(n => n.trim()).filter(n => n.length > 0 && n.length < 30)
-        if (names.length > 1) {
-          addBulkPlayersToGroup(group.id, names)
-        } else if (text.trim().length > 0) {
-          addPlayerToGroup(group.id, text.trim())
-        }
-        setVoiceInput('')
-        bestText = ''
+        ;(async () => {
+          let text = bestText
+          const corrected = await correctTranscript(text, { groupPlayers: group?.players?.map(p => p.name) || [] })
+          if (corrected) text = corrected
+          setVoiceInput(text)
+          const names = text.split(/[,;और,and]+/).map(n => n.trim()).filter(n => n.length > 0 && n.length < 30)
+          if (names.length > 1) {
+            addBulkPlayersToGroup(group.id, names)
+          } else if (text.trim().length > 0) {
+            addPlayerToGroup(group.id, text.trim())
+          }
+          setVoiceInput('')
+          bestText = ''
+        })()
       }
     }
     recognition.onerror = () => { setIsVoiceListening(false); bestText = '' }

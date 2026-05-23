@@ -3,7 +3,7 @@ import { useMatch } from '../context/MatchContext'
 import { useGroups } from '../context/GroupContext'
 import { getRandomNickname } from '../utils/commentary'
 import { generateShareCode } from '../utils/matchUtils'
-import { parseVoiceCreateMatch, generateAIPlayerNames } from '../utils/groq'
+import { parseVoiceCreateMatch, generateAIPlayerNames, correctTranscript } from '../utils/groq'
 
 const COLORS = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9']
 const PLAYER_SUGGESTIONS_A = ['Virat', 'Rohit', 'Dhoni', 'Sachin', 'Bumrah', 'Jadeja', 'Shami', 'Kohli', 'Pant', 'Hardik']
@@ -91,13 +91,19 @@ export default function CreateMatchScreen({ onNavigate }) {
       resetSilenceTimer()
 
       if (event.results[event.results.length - 1]?.isFinal) {
-        const text = bestTranscript
+        let text = bestTranscript
         if (!text.trim()) return
         setAiThinking(true)
         try {
           const groupCtx = matchType === 'group' && selectedGroupId
             ? groups.find(g => g.id === selectedGroupId)?.players.map(p => p.name) || null
             : null
+          // Correct transcript before parsing
+          const corrected = await correctTranscript(text, { groupPlayers: groupCtx })
+          if (corrected && corrected !== text) {
+            setVoiceTranscript(corrected)
+            text = corrected
+          }
           const result = await parseVoiceCreateMatch(text, groupCtx)
           if (result) {
             setAiResult(result)

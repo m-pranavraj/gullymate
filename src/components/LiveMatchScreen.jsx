@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { useGroups } from '../context/GroupContext'
 import { getRandomLine } from '../utils/commentary'
 import { defaultRules, selectMOTM } from '../utils/matchUtils'
-import { parseVoiceLiveCommand, getAITaunt } from '../utils/groq'
+import { parseVoiceLiveCommand, getAITaunt, correctTranscript } from '../utils/groq'
 
 const BALL_TYPES = {
   '0': '#FF6B6B', '1': '#4ECDC4', '2': '#45B7D1',
@@ -337,8 +337,15 @@ export default function LiveMatchScreen({ onNavigate }) {
       resetSilenceTimer()
 
       if (!event.results[event.results.length - 1]?.isFinal) return
-      const text = bestTranscript
+      let text = bestTranscript
       if (!text.trim()) return
+
+      // Correct transcript before processing
+      const corrected = await correctTranscript(text, { groupPlayers: null })
+      if (corrected && corrected !== text) {
+        setVoiceTranscript(corrected)
+        text = corrected
+      }
 
       const lower = text.toLowerCase().trim()
 
