@@ -88,14 +88,6 @@ function applyLocalCorrections(text) {
   }
   // Normalize common separator words
   cleaned = cleaned.replace(/\band\b/gi, ',').replace(/\s*,\s*/g, ', ')
-  // Strip common command framing (for fallback when AI fails)
-  // e.g. "team a name is john" → "john", "player name is sai" → "sai"
-  cleaned = cleaned.replace(/\b(team\s+[ab]\s+)?(player\s+)?name\s+is\b/gi, '')
-  cleaned = cleaned.replace(/\b(team\s+[ab]\s+)?players?\s+are\b/gi, '')
-  cleaned = cleaned.replace(/\badd\s+(player|name)?\s*/gi, '')
-  cleaned = cleaned.replace(/\bplayer\s+name\b/gi, '')
-  cleaned = cleaned.replace(/\bname\s+is\b/gi, '')
-  cleaned = cleaned.trim()
   return cleaned
 }
 
@@ -116,16 +108,14 @@ Rules:
 - Fix garbled/corrupted words to the nearest cricket term
 - Recognize Indian cricket player names
 - Convert Hinglish to English cricket terms
-- STRIP command framing: if user says "team a name is X" or "player name is X", return just the name "X"
-- If user says "team a players are X and Y", return just "X and Y" (keep the separator)
+- Keep team names as-is if they sound like team names
 - Return ONLY the corrected text, nothing else
 
 Examples:
-- "te m be pl re are sant sh pran v sa" → "Santosh Pranav Sai"
-- "ad d rah l to te m a" → "Rahul"
-- "te m a na me is vk boys" → "VK Boys"
-- "pla ye r na me is sa nt sh" → "Santosh"
-- "te m a is vk boys te m b is t tans" → "team a is vk boys team b is t tans"
+- "te m be pl re are sant sh pran v sa" → "Team B players are Santosh Pranav Sai"
+- "ad d rah l to te m a" → "Add Rahul to Team A"
+- "te m a is vk boys te m b is t tans" → "Team A is VK Boys Team B is Titans"
+- "te m a na me is vk boys" → "Team A name is VK Boys"
 - "s x chauka fo r s1 x" → "six four six"
 - "st art the m tch" → "start the match"
 - "tea m a won the to ss and ch se to ba t" → "Team A won the toss and chose to bat"

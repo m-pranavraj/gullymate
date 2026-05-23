@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useCallback, useEffect, useMemo } 
 import { storage } from '../utils/storage'
 import { getSupabase, isSupabaseConfigured, STORAGE_KEYS } from '../lib/supabase'
 import { useAuth } from './AuthContext'
+import { generateShareCode } from '../utils/matchUtils'
 
 const GroupContext = createContext(null)
 
@@ -38,6 +39,7 @@ export function GroupProvider({ children }) {
           const local = remoteGroups.map(g => ({
             id: g.id,
             name: g.name,
+            shareCode: g.share_code || null,
             createdAt: new Date(g.created_at).getTime(),
             ownerId: g.owner_id,
             players: (g.group_players || []).map(p => ({
@@ -84,6 +86,7 @@ export function GroupProvider({ children }) {
         id: group.id,
         owner_id: user.id,
         name: group.name,
+        share_code: group.shareCode || null,
         created_at: new Date(group.createdAt).toISOString(),
       }).select().single()
       for (const p of group.players) {
@@ -103,6 +106,7 @@ export function GroupProvider({ children }) {
     const group = {
       id: Date.now().toString(),
       name: name.trim(),
+      shareCode: generateShareCode(),
       createdAt: Date.now(),
       ownerId: user?.id || null,
       players: [],
@@ -274,13 +278,80 @@ export function GroupProvider({ children }) {
     addActivityToGroup(groupId, 'System', 'All stats reset')
   }, [])
 
+  const claimPlayerInGroup = useCallback((groupId, playerName, userId, userName) => {
+    setGroups(prev => prev.map(g => {
+      if (g.id !== groupId) return g
+      const updated = {
+        ...g,
+        players: g.players.map(p =>
+          p.name === playerName
+            ? { ...p, userId, claimed: true, claimedByName: userName }
+            : p
+        ),
+      }
+      syncGroupToSupabase(updated)
+      return updated
+    }))
+    addActivityToGroup(groupId, 'System', `Player "${playerName}" claimed by ${userName}`)
+  }, [syncGroupToSupabase])
+
+  // Shared groups cache: groups loaded via share code (not owned by current user)
+  const [sharedGroups, setSharedGroups] = useState([])
+
+  const getGroupByShareCode = useCallback(async (shareCode) => {
+    if (!shareCode) return null
+    // First check local groups (owned or already shared)
+    const localMatch = [...groups, ...sharedGroups].find(g => g.shareCode === shareCode)
+    if (localMatch) return localMatch
+    // Then try Supabase
+    const sb = getSupabase()
+    if (sb) {
+      try {
+        const { data, error } = await sb
+          .from('groups')
+          .select('*, group_players(*)')
+          .eq('share_code', shareCode)
+          .maybeSingle()
+        if (error) throw error
+        if (data) {
+          const g = {
+            id: data.id,
+            name: data.name,
+            shareCode: data.share_code,
+            createdAt: new Date(data.created_at).getTime(),
+            ownerId: data.owner_id,
+            players: (data.group_players || []).map(p => ({
+              name: p.name,
+              userId: p.user_id,
+              claimed: p.claimed,
+              claimedByName: null,
+              stats: { matches: 0, runs: 0, balls: 0, fours: 0, sixes: 0, wickets: 0, overs: 0, runsConceded: 0, catches: 0, stumpings: 0, fifties: 0, hundreds: 0, notOuts: 0, ducks: 0, highestScore: 0 },
+              history: [],
+            })),
+            matches: [],
+            activityLog: [],
+          }
+          setSharedGroups(prev => {
+            if (prev.find(x => x.id === g.id)) return prev
+            return [...prev, g]
+          })
+          return g
+        }
+      } catch (e) {
+        console.warn('Supabase group lookup failed:', e)
+      }
+    }
+    return null
+  }, [groups, sharedGroups])
+
   return (
     <GroupContext.Provider value={{
-      groups, activeGroup,
+      groups, activeGroup, sharedGroups,
       createGroup, deleteGroup, getGroup,
       addPlayerToGroup, removePlayerFromGroup, addBulkPlayersToGroup,
       recordMatchForGroup, addActivityToGroup,
       setActiveGroupById, resetGroupStats,
+      claimPlayerInGroup, getGroupByShareCode,
     }}>
       {children}
     </GroupContext.Provider>

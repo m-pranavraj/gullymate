@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useRef } from 'react'
 import { useGroups } from '../context/GroupContext'
-import { correctTranscript } from '../utils/groq'
+import { useAuth } from '../context/AuthContext'
 
 const STAT_CATEGORIES = {
   batting: [
@@ -31,7 +31,8 @@ const STAT_CATEGORIES = {
 }
 
 export default function GroupDashboard({ onNavigate }) {
-  const { groups, activeGroup, setActiveGroupById, addPlayerToGroup, removePlayerFromGroup, addBulkPlayersToGroup, resetGroupStats } = useGroups()
+  const { groups, activeGroup, setActiveGroupById, addPlayerToGroup, removePlayerFromGroup, addBulkPlayersToGroup, resetGroupStats, claimPlayerInGroup } = useGroups()
+  const { user } = useAuth()
   const [activeStatTab, setActiveStatTab] = useState('batting')
   const [sortBy, setSortBy] = useState('runs')
   const [showAddPlayer, setShowAddPlayer] = useState(false)
@@ -42,6 +43,7 @@ export default function GroupDashboard({ onNavigate }) {
   const [selectedPlayer, setSelectedPlayer] = useState(null)
   const [voiceInput, setVoiceInput] = useState('')
   const [isVoiceListening, setIsVoiceListening] = useState(false)
+  const [copiedShare, setCopiedShare] = useState(false)
   const voiceRecognitionRef = useRef(null)
   const voiceSilenceTimerRef = useRef(null)
 
@@ -118,11 +120,9 @@ export default function GroupDashboard({ onNavigate }) {
       resetSilenceTimer()
 
       if (event.results[event.results.length - 1]?.isFinal && bestText.trim()) {
-        ;(async () => {
-          let text = bestText
-          const corrected = await correctTranscript(text, { groupPlayers: group?.players?.map(p => p.name) || [] })
-          if (corrected) text = corrected
+          const text = bestText
           setVoiceInput(text)
+          // Directly split by separators and add — no AI, no stripping, no over-action
           const names = text.split(/[,;और,and]+/).map(n => n.trim()).filter(n => n.length > 0 && n.length < 30)
           if (names.length > 1) {
             addBulkPlayersToGroup(group.id, names)
@@ -131,7 +131,6 @@ export default function GroupDashboard({ onNavigate }) {
           }
           setVoiceInput('')
           bestText = ''
-        })()
       }
     }
     recognition.onerror = () => { setIsVoiceListening(false); bestText = '' }
@@ -168,6 +167,14 @@ export default function GroupDashboard({ onNavigate }) {
 
   const currentCat = STAT_CATEGORIES[activeStatTab] || STAT_CATEGORIES.batting
 
+  const handleClaimPlayer = (player) => {
+    if (!user || user?.isGuest) { alert('Create an account first to claim a player identity'); return }
+    if (player.claimed) return
+    if (confirm(`Link this player "${player.name}" to your account (${user.name})?`)) {
+      claimPlayerInGroup(group.id, player.name, user.id, user.name)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-pitch-dark via-[#0d0d25] to-blue-950 pb-8">
       {/* Header */}
@@ -180,12 +187,18 @@ export default function GroupDashboard({ onNavigate }) {
               <select
                 value={group.id}
                 onChange={e => setActiveGroupById(e.target.value)}
-                className="bg-zinc-800 text-white text-sm font-bold rounded-xl px-3 py-1.5 border border-zinc-700 outline-none appearance-none cursor-pointer max-w-[160px] truncate"
+                className="bg-zinc-800 text-white text-sm font-bold rounded-xl px-3 py-1.5 border border-zinc-700 outline-none appearance-none cursor-pointer max-w-[140px] truncate"
               >
                 {groups.map(g => (
                   <option key={g.id} value={g.id}>{g.name}</option>
                 ))}
               </select>
+              {group.shareCode && (
+                <button onClick={() => { navigator.clipboard.writeText(group.shareCode); setCopiedShare(true); setTimeout(() => setCopiedShare(false), 2000) }}
+                  className="text-[10px] text-zinc-500 hover:text-blue-400 transition-colors px-1.5 py-0.5 rounded bg-zinc-800/80 border border-zinc-700/50 shrink-0">
+                  {copiedShare ? '✓ Copied' : '🔗'}
+                </button>
+              )}
             </div>
             <p className="text-[10px] text-gray-500 mt-0.5 flex items-center gap-2">
               <span>✦ {group.players.length} players</span>
@@ -386,6 +399,18 @@ export default function GroupDashboard({ onNavigate }) {
                 <p>Econ: <span className="text-white font-medium">{selectedPlayer.stats.overs > 0 ? (selectedPlayer.stats.runsConceded / selectedPlayer.stats.overs * 6).toFixed(1) : '-'}</span></p>
                 <p>50s/100s: <span className="text-white font-medium">{selectedPlayer.stats.fifties}/{selectedPlayer.stats.hundreds}</span></p>
               </div>
+
+              {/* Claim Identity */}
+              {!selectedPlayer.claimed ? (
+                <button onClick={() => handleClaimPlayer(selectedPlayer)}
+                  className="w-full mb-3 py-2.5 rounded-xl border border-dashed border-blue-500/30 text-blue-400 text-xs font-medium hover:bg-blue-500/10 active:scale-[0.98] transition-all">
+                  🔗 Claim this as my identity
+                </button>
+              ) : (
+                <div className="w-full mb-3 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium text-center flex items-center justify-center gap-1.5">
+                  <span>✓</span> Claimed {selectedPlayer.claimedByName ? `by ${selectedPlayer.claimedByName}` : ''}
+                </div>
+              )}
 
               {/* Match History */}
               <h3 className="font-bold text-xs text-zinc-300 mb-2 flex items-center gap-2">
