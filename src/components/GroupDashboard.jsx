@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useRef } from 'react'
 import { useGroups } from '../context/GroupContext'
-import { correctTranscript } from '../utils/groq'
+import { correctTranscript, extractNamesFromVoice } from '../utils/groq'
 
 const STAT_CATEGORIES = {
   batting: [
@@ -123,11 +123,11 @@ export default function GroupDashboard({ onNavigate }) {
           const corrected = await correctTranscript(text, { groupPlayers: group?.players?.map(p => p.name) || [] })
           if (corrected) text = corrected
           setVoiceInput(text)
-          const names = text.split(/[,;और,and]+/).map(n => n.trim()).filter(n => n.length > 0 && n.length < 30)
+          const names = extractNamesFromVoice(text)
           if (names.length > 1) {
             addBulkPlayersToGroup(group.id, names)
-          } else if (text.trim().length > 0) {
-            addPlayerToGroup(group.id, text.trim())
+          } else if (names.length === 1) {
+            addPlayerToGroup(group.id, names[0])
           }
           setVoiceInput('')
           bestText = ''
@@ -304,7 +304,7 @@ export default function GroupDashboard({ onNavigate }) {
                     const isTop3 = rank <= 3
                     const medals = ['🥇', '🥈', '🥉']
                     return (
-                      <tr key={player.name} className="border-b border-zinc-800/50 last:border-0 hover:bg-white/[0.02] transition-colors">
+                      <tr key={player.name} className="group border-b border-zinc-800/50 last:border-0 hover:bg-white/[0.03] transition-colors">
                         <td className="py-3 px-3 text-center">
                           {isTop3 ? <span className="text-sm">{medals[rank - 1]}</span> : <span className="text-zinc-600">{rank}</span>}
                         </td>
@@ -316,7 +316,7 @@ export default function GroupDashboard({ onNavigate }) {
                         })}
                         <td className="py-3 pr-2">
                           <button onClick={(e) => { e.stopPropagation(); if (confirm(`Remove ${player.name}?`)) removePlayerFromGroup(group.id, player.name) }}
-                            className="text-zinc-600 hover:text-red-400 text-[10px] transition-colors opacity-0 group-hover:opacity-100">✕</button>
+                                                         className="text-zinc-600 hover:text-red-400 text-[10px] transition-all opacity-30 hover:opacity-100">✕</button>
                         </td>
                       </tr>
                     )

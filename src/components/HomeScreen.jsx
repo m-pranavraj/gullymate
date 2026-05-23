@@ -175,7 +175,7 @@ export default function HomeScreen({ onNavigate }) {
                       View
                     </button>
                     <button onClick={() => handleDelete(match.id)}
-                      className="px-3 py-2 rounded-xl bg-red-500/10 text-red-400 text-xs font-medium active:scale-90 transition-all opacity-0 group-hover:opacity-100">
+                      className="px-3 py-2 rounded-xl bg-red-500/10 text-red-400 text-xs font-medium active:scale-90 transition-all opacity-30 hover:opacity-100">
                       ✕
                     </button>
                   </div>

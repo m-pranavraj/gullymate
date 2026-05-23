@@ -34,6 +34,23 @@ async function groqCompletion(messages, maxTokens = 256) {
   return data.choices[0].message.content
 }
 
+// Strip command framing phrases like "team a name is x" → "x"
+export function extractNamesFromVoice(text) {
+  let t = text.trim()
+  // Remove common framing phrases (case-insensitive)
+  t = t.replace(/\b(team\s+[ab]\s+)?(player\s+)?name\s+is\b/gi, '')
+  t = t.replace(/\b(team\s+[ab]\s+)?players?\s+are\b/gi, '')
+  t = t.replace(/\badd\s+(player|name)?\s*/gi, '')
+  t = t.replace(/\bset\s+(player|name|team\s+[ab])?\s*/gi, '')
+  t = t.replace(/\bto\s+team\s+[ab]\b/gi, '')
+  t = t.replace(/\bplayer\s+name\b/gi, '')
+  t = t.replace(/\bname\s+is\b/gi, '')
+  t = t.trim()
+  // Split by common separators
+  const names = t.split(/[,;और,and]+/).map(n => n.trim()).filter(n => n.length > 0 && n.length < 30)
+  return names
+}
+
 // Client-side correction map for common speech recognition errors
 const CORRECTION_MAP = {
   'te m': 'team', 'te m b': 'team b', 'te m a': 'team a',
@@ -67,6 +84,12 @@ const CORRECTION_MAP = {
   'bumr h': 'bumrah', 'bumr h': 'bumrah',
   'jad ja': 'jadeja', 'jadja': 'jadeja',
   'hard k': 'hardik', 'hard k': 'hardik',
+  'na me': 'name', 'na m': 'name', 'na me is': 'name is',
+  'pla ye r na me': 'player name', 'play r na me': 'player name',
+  'tea m a na me': 'team a name', 'tea m b na me': 'team b name',
+  'ye a': 'yeah', 'ye s': 'yes',
+  'pla ye rs': 'players', 'pla ers': 'players',
+  'a re': 'are', 'r': 'are',
 }
 
 function applyLocalCorrections(text) {
@@ -82,6 +105,14 @@ function applyLocalCorrections(text) {
   }
   // Normalize common separator words
   cleaned = cleaned.replace(/\band\b/gi, ',').replace(/\s*,\s*/g, ', ')
+  // Strip common command framing (for fallback when AI fails)
+  // e.g. "team a name is john" → "john", "player name is sai" → "sai"
+  cleaned = cleaned.replace(/\b(team\s+[ab]\s+)?(player\s+)?name\s+is\b/gi, '')
+  cleaned = cleaned.replace(/\b(team\s+[ab]\s+)?players?\s+are\b/gi, '')
+  cleaned = cleaned.replace(/\badd\s+(player|name)?\s*/gi, '')
+  cleaned = cleaned.replace(/\bplayer\s+name\b/gi, '')
+  cleaned = cleaned.replace(/\bname\s+is\b/gi, '')
+  cleaned = cleaned.trim()
   return cleaned
 }
 
@@ -102,13 +133,16 @@ Rules:
 - Fix garbled/corrupted words to the nearest cricket term
 - Recognize Indian cricket player names
 - Convert Hinglish to English cricket terms
-- Keep team names as-is if they sound like team names
+- STRIP command framing: if user says "team a name is X" or "player name is X", return just the name "X"
+- If user says "team a players are X and Y", return just "X and Y" (keep the separator)
 - Return ONLY the corrected text, nothing else
 
 Examples:
-- "te m be pl re are sant sh pran v sa" → "Team B players are Santosh Pranav Sai"
-- "ad d rah l to te m a" → "Add Rahul to Team A"
-- "te m a is vk boys te m b is t tans" → "Team A is VK Boys Team B is Titans"
+- "te m be pl re are sant sh pran v sa" → "Santosh Pranav Sai"
+- "ad d rah l to te m a" → "Rahul"
+- "te m a na me is vk boys" → "VK Boys"
+- "pla ye r na me is sa nt sh" → "Santosh"
+- "te m a is vk boys te m b is t tans" → "team a is vk boys team b is t tans"
 - "s x chauka fo r s1 x" → "six four six"
 - "st art the m tch" → "start the match"
 - "tea m a won the to ss and ch se to ba t" → "Team A won the toss and chose to bat"

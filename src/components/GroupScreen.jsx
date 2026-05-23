@@ -134,7 +134,7 @@ export default function GroupScreen({ onNavigate }) {
                       )}
                     </div>
                     <button onClick={(e) => { e.stopPropagation(); if (confirm('Delete this group and all its data?')) deleteGroup(group.id) }}
-                      className="text-zinc-600 hover:text-red-400 text-xs px-2 py-1 transition-colors opacity-0 group-hover:opacity-100">✕</button>
+                      className="text-zinc-600 hover:text-red-400 text-xs px-2 py-1 transition-colors opacity-30 hover:opacity-100">✕</button>
                   </div>
                 </div>
               )
