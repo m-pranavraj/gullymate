@@ -14,9 +14,11 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view own profile" ON public.profiles;
 CREATE POLICY "Users can view own profile"
   ON public.profiles FOR SELECT USING (auth.uid() = id);
 
+DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
 CREATE POLICY "Users can update own profile"
   ON public.profiles FOR UPDATE USING (auth.uid() = id);
 
@@ -30,7 +32,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
-CREATE OR REPLACE TRIGGER on_auth_user_created
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
@@ -47,10 +50,11 @@ CREATE TABLE IF NOT EXISTS public.groups (
 
 ALTER TABLE public.groups ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can CRUD own groups" ON public.groups;
 CREATE POLICY "Users can CRUD own groups"
   ON public.groups FOR ALL USING (auth.uid() = owner_id);
 
--- Allow anyone to view a group by share code
+DROP POLICY IF EXISTS "Anyone can view groups by share code" ON public.groups;
 CREATE POLICY "Anyone can view groups by share code"
   ON public.groups FOR SELECT USING (share_code IS NOT NULL);
 
@@ -82,11 +86,13 @@ CREATE TABLE IF NOT EXISTS public.group_players (
 
 ALTER TABLE public.group_players ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Group owners can manage players" ON public.group_players;
 CREATE POLICY "Group owners can manage players"
   ON public.group_players FOR ALL USING (
     auth.uid() IN (SELECT owner_id FROM public.groups WHERE id = group_id)
   );
 
+DROP POLICY IF EXISTS "Players can view themselves" ON public.group_players;
 CREATE POLICY "Players can view themselves"
   ON public.group_players FOR SELECT USING (
     auth.uid() = user_id OR
@@ -118,6 +124,7 @@ CREATE TABLE IF NOT EXISTS public.player_stats (
 
 ALTER TABLE public.player_stats ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Group owners can view stats" ON public.player_stats;
 CREATE POLICY "Group owners can view stats"
   ON public.player_stats FOR SELECT USING (
     auth.uid() IN (SELECT owner_id FROM public.groups WHERE id = (
@@ -150,9 +157,11 @@ CREATE TABLE IF NOT EXISTS public.matches (
 
 ALTER TABLE public.matches ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can CRUD own matches" ON public.matches;
 CREATE POLICY "Users can CRUD own matches"
   ON public.matches FOR ALL USING (auth.uid() = owner_id);
 
+DROP POLICY IF EXISTS "Anyone can view by share code" ON public.matches;
 CREATE POLICY "Anyone can view by share code"
   ON public.matches FOR SELECT USING (share_code IS NOT NULL);
 
@@ -172,12 +181,14 @@ CREATE TABLE IF NOT EXISTS public.collaborators (
 
 ALTER TABLE public.collaborators ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Match owner and collaborators can view" ON public.collaborators;
 CREATE POLICY "Match owner and collaborators can view"
   ON public.collaborators FOR SELECT USING (
     auth.uid() IN (SELECT owner_id FROM public.matches WHERE id = match_id) OR
     auth.uid() = user_id
   );
 
+DROP POLICY IF EXISTS "Match owner can add collaborators" ON public.collaborators;
 CREATE POLICY "Match owner can add collaborators"
   ON public.collaborators FOR INSERT WITH CHECK (
     auth.uid() IN (SELECT owner_id FROM public.matches WHERE id = match_id)
@@ -197,6 +208,7 @@ CREATE TABLE IF NOT EXISTS public.activities (
 
 ALTER TABLE public.activities ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view their activities" ON public.activities;
 CREATE POLICY "Users can view their activities"
   ON public.activities FOR SELECT USING (
     auth.uid() = user_id OR
