@@ -113,11 +113,13 @@ export default function GroupDashboard({ onNavigate }) {
     recognition.onend = () => {
       setIsVoiceListening(false)
       if (finalText.trim()) {
-        const names = finalText.trim().split(/[,;और,and]+/).map(n => n.trim()).filter(n => n.length > 0 && n.length < 30)
-        if (names.length > 1) {
-          addBulkPlayersToGroup(group.id, names)
-        } else {
-          addPlayerToGroup(group.id, finalText.trim())
+        // Split by words: each word = one player name (remove punctuation, skip single letters)
+        const words = finalText.trim()
+          .replace(/[.,;:!?()'"]/g, '')
+          .split(/\s+/)
+          .filter(w => w.length >= 2 && w.length < 30)
+        if (words.length > 0) {
+          words.forEach(name => addPlayerToGroup(group.id, name))
         }
         setVoiceInput('')
         finalText = ''

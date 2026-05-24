@@ -136,7 +136,7 @@ Return ONLY the corrected text.`
 }
 
 export async function parseVoiceCreateMatch(text, groupContext = null) {
-  const groupInfo = groupContext ? `Available group players: ${JSON.stringify(groupContext)}` : ''
+  const groupInfo = groupContext ? `CRITICAL: Only use names from this group player list: ${JSON.stringify(groupContext)}. Do NOT invent new names. If a spoken name doesn't match, use the closest match from the list.` : ''
   const systemPrompt = `You are Gully AI, a voice parser for a gully cricket match creation app.
 Parse the user's speech and extract structured data. Return ONLY valid JSON with these fields:
 - teamA: string or null

@@ -35,6 +35,7 @@ export default function CreateMatchScreen({ onNavigate }) {
   const [selectedGroupId, setSelectedGroupId] = useState('')
   const [editingPlayerId, setEditingPlayerId] = useState(null)
   const [editingPlayerName, setEditingPlayerName] = useState('')
+  const [selectedGroupPlayers, setSelectedGroupPlayers] = useState(new Set())
   const addPlayerInputRef = useRef(null)
   const recognitionRef = useRef(null)
   const silenceTimerRef = useRef(null)
@@ -152,7 +153,13 @@ export default function CreateMatchScreen({ onNavigate }) {
       return
     }
 
-    const resolveNames = (names) => groupPlayers ? names.map(n => matchGroupPlayer(n, groupPlayers)) : names
+    const resolveNames = (names) => {
+      if (!groupPlayers) return names
+      // Only keep names that actually match a group player (don't create new names)
+      return names.map(n => matchGroupPlayer(n, groupPlayers)).filter(n =>
+        groupPlayers.some(p => p.name.toLowerCase() === n.toLowerCase())
+      )
+    }
     const makePlayers = (names) =>
       names.map((name, i) => ({ id: Date.now().toString() + Math.random(), name, color: COLORS[i % COLORS.length] }))
 
@@ -198,7 +205,13 @@ export default function CreateMatchScreen({ onNavigate }) {
     if (result.teamB && result.teamB !== teamB) setTeamB(result.teamB)
     if (result.ground) setGround(result.ground)
 
-    const resolveNames = (names) => groupPlayers ? names.map(n => matchGroupPlayer(n, groupPlayers)) : names
+    const resolveNames = (names) => {
+      if (!groupPlayers) return names
+      // Only keep names that actually match a group player (don't create new names)
+      return names.map(n => matchGroupPlayer(n, groupPlayers)).filter(n =>
+        groupPlayers.some(p => p.name.toLowerCase() === n.toLowerCase())
+      )
+    }
     const makePlayers = (names, existing) =>
       names.map((name, i) => ({ id: Date.now().toString() + Math.random(), name, color: COLORS[(existing.length + i) % COLORS.length] }))
 
@@ -658,6 +671,64 @@ export default function CreateMatchScreen({ onNavigate }) {
               {error}
             </div>
           )}
+
+          {/* Group Player Multi-Select */}
+          {matchType === 'group' && selectedGroupId && (() => {
+            const group = groups.find(g => g.id === selectedGroupId)
+            if (!group || group.players.length === 0) return null
+            const currentPlayers = currentTeam === 'A' ? playersA : playersB
+            const currentNames = new Set(currentPlayers.map(p => p.name.toLowerCase()))
+            const available = group.players.filter(p => !currentNames.has(p.name.toLowerCase()))
+            return (
+              <div className="mb-4 p-3 rounded-xl bg-purple-500/5 border border-purple-500/20 animate-fade-up">
+                <p className="text-[10px] uppercase tracking-wider text-purple-400 font-bold mb-2 flex items-center gap-2">
+                  <span>From Group · {group.name}</span>
+                  <span className="text-zinc-500">({available.length} available)</span>
+                </p>
+                {available.length > 0 ? (
+                  <>
+                    <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto mb-2">
+                      {available.map(p => (
+                          <label key={p.name}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium cursor-pointer transition-all border ${
+                              selectedGroupPlayers.has(p.name)
+                                ? 'bg-purple-500/20 border-purple-400/50 text-white'
+                                : 'bg-purple-500/5 border-purple-500/20 text-purple-300 hover:bg-purple-500/15'
+                            }`}>
+                            <input type="checkbox" checked={selectedGroupPlayers.has(p.name)}
+                              onChange={() => {
+                                const next = new Set(selectedGroupPlayers)
+                                if (next.has(p.name)) next.delete(p.name)
+                                else next.add(p.name)
+                                setSelectedGroupPlayers(next)
+                              }}
+                              className="sr-only" />
+                            <span className={`w-3 h-3 rounded border flex items-center justify-center text-[8px] transition-all ${
+                              selectedGroupPlayers.has(p.name) ? 'bg-purple-500 border-purple-400 text-white' : 'border-zinc-600'
+                            }`}>
+                              {selectedGroupPlayers.has(p.name) ? '✓' : ''}
+                            </span>
+                            {p.name}
+                          </label>
+                      ))}
+                    </div>
+                    {selectedGroupPlayers.size > 0 && (
+                      <button onClick={() => {
+                        const names = Array.from(selectedGroupPlayers)
+                        addBulkPlayers(currentTeam, names)
+                        setSelectedGroupPlayers(new Set())
+                      }}
+                        className="w-full py-2 rounded-xl bg-purple-600 text-white text-xs font-bold active:scale-95 transition-all shadow-lg shadow-purple-500/20">
+                        ＋ Add {selectedGroupPlayers.size} player{selectedGroupPlayers.size > 1 ? 's' : ''} to {currentTeam === 'A' ? (teamA || 'Team A') : (teamB || 'Team B')}
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-[10px] text-zinc-600 italic">All group players already added to this team</p>
+                )}
+              </div>
+            )
+          })()}
 
           {/* Team A Players */}
           <div className="mb-4">
