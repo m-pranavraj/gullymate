@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { useMatch } from '../context/MatchContext'
 import { useGroups } from '../context/GroupContext'
 import { generateShareCode } from '../utils/matchUtils'
-import { parseVoiceCreateMatch, generateAIPlayerNames } from '../utils/groq'
+import { generateAIPlayerNames } from '../utils/groq'
 
 const COLORS = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9']
 const PLAYER_SUGGESTIONS_A = ['Virat', 'Rohit', 'Dhoni', 'Sachin', 'Bumrah', 'Jadeja', 'Shami', 'Kohli', 'Pant', 'Hardik']
@@ -94,8 +94,8 @@ export default function CreateMatchScreen({ onNavigate, rematchData }) {
       setVoiceTranscript(bestTranscript)
       resetSilenceTimer()
 
+      // Process immediately with latest utterance (fast, no AI)
       if (event.results[event.results.length - 1]?.isFinal) {
-        // Use only the latest utterance to avoid accumulated partials
         const last = event.results[event.results.length - 1]
         let text = last[0].transcript
         for (let j = 1; j < last.length; j++) {
@@ -103,23 +103,8 @@ export default function CreateMatchScreen({ onNavigate, rematchData }) {
             text = last[j].transcript
           }
         }
-        if (!text.trim()) return
-        setAiThinking(true)
-        try {
-          const groupCtx = matchType === 'group' && selectedGroupId
-            ? groups.find(g => g.id === selectedGroupId)?.players.map(p => p.name) || null
-            : null
-          const result = await parseVoiceCreateMatch(text, groupCtx)
-          if (result) {
-            setAiResult(result)
-            applyAIResult(result)
-          } else {
-            fallbackParsing(text)
-          }
-        } catch (e) {
-          fallbackParsing(text)
-        }
-        setAiThinking(false)
+        if (!text.trim() || text.length < 3) return
+        fallbackParsing(text)
         bestTranscript = ''
       }
     }
