@@ -57,48 +57,36 @@ export function GroupProvider({ children }) {
     runMigration()
   }, [])
 
-  // Backfill: after schema is confirmed OK, re-sync all local groups to populate
-  // share_code on existing Supabase rows that were synced before the column existed.
-  const backfillShareCodes = useCallback(async () => {
+  // Backfill: after schema is OK and groups are populated, push all local groups
+  // to Supabase so share_code exists in the DB for share-code lookups.
+  const backfillRan = useRef(false)
+  useEffect(() => {
     const sb = getSupabase()
-    if (!sb || !user?.id || user?.isGuest) return
-    for (const g of groups) {
-      if (!g.shareCode) continue
-      try {
-        await sb.from('groups').update({ share_code: g.shareCode }).eq('id', g.id)
-      } catch (_) {}
-    }
-  }, [groups, user?.id, user?.isGuest])
-
-  // Also backfill any local groups whose entire row never made it to Supabase
-  // (e.g. because previous syncGroupToSupabase failed on a missing column)
-  const backfillMissingGroups = useCallback(async () => {
-    const sb = getSupabase()
-    if (!sb || !user?.id || user?.isGuest) return
-    for (const g of groups) {
-      try {
-        // Try a minimal upsert that only sets core columns + share_code
-        // (skip snapshot so even partial schema doesn't block it)
-        const { data } = await sb.from('groups').upsert({
-          id: g.id,
-          owner_id: user.id,
-          name: g.name,
-          share_code: g.shareCode || null,
-          created_at: new Date(g.createdAt).toISOString(),
-        }).select('id').maybeSingle()
-        if (!data) continue
-        // Sync players separately
-        for (const p of g.players) {
-          await sb.from('group_players').upsert({
-            group_id: g.id,
-            name: p.name,
-            user_id: p.userId || null,
-            claimed: p.claimed || false,
-          }, { onConflict: 'group_id, name' }).maybeSingle()
-        }
-      } catch (_) {}
-    }
-  }, [groups, user?.id, user?.isGuest])
+    if (!sb || !user?.id || user?.isGuest || needsMigration) return
+    if (backfillRan.current || groups.length === 0) return
+    backfillRan.current = true
+    ;(async () => {
+      for (const g of groups) {
+        try {
+          await sb.from('groups').upsert({
+            id: g.id,
+            owner_id: user.id,
+            name: g.name,
+            share_code: g.shareCode || null,
+            created_at: new Date(g.createdAt).toISOString(),
+          }, { onConflict: 'id' })
+          for (const p of g.players) {
+            await sb.from('group_players').upsert({
+              group_id: g.id,
+              name: p.name,
+              user_id: p.userId || null,
+              claimed: p.claimed || false,
+            }, { onConflict: 'group_id, name' })
+          }
+        } catch (_) {}
+      }
+    })()
+  }, [groups, needsMigration, user?.id, user?.isGuest])
 
   // Sync from Supabase on mount for logged-in users
   useEffect(() => {
@@ -135,6 +123,10 @@ export function GroupProvider({ children }) {
             prev.forEach(lg => {
               const existing = merged.find(m => m.id === lg.id)
               if (existing) {
+                existing.shareCode = existing.shareCode || lg.shareCode
+                existing.name = existing.name || lg.name
+                existing.createdAt = existing.createdAt || lg.createdAt
+                existing.ownerId = existing.ownerId || lg.ownerId
                 existing.matches = lg.matches || []
                 existing.activityLog = lg.activityLog || []
                 existing.players = existing.players.map(ep => {
@@ -152,10 +144,7 @@ export function GroupProvider({ children }) {
         console.warn('Supabase group sync failed, using local:', e)
       }
     }
-    loadGroups().then(() => {
-      backfillShareCodes()
-      backfillMissingGroups()
-    })
+    loadGroups()
   }, [user?.id, user?.isGuest])
 
   const syncGroupToSupabase = useCallback(async (group) => {
