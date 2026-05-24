@@ -151,19 +151,25 @@ Parse the user's speech and extract structured data. Return ONLY valid JSON with
 - groupName: string or null
 
 CRITICAL rules:
-1. "Team A name is <NAME>" or "add <NAME> to Team A" → action:"addToTeamA", playersA:["<NAME>"] (APPEND, do NOT set team name)
-2. "Team B name is <NAME>" or "add <NAME> to Team B" → action:"addToTeamB", playersB:["<NAME>"] (APPEND, do NOT set team name)
-3. "Team A is <LONG TEAM NAME>" like "Team A is VK Boys" → teamA:"VK Boys" (only set teamA when it sounds like a team name)
-4. "Team A players ARE X, Y, Z" → action:"setTeamA", playersA:[...] (REPLACE all existing players)
-5. "ADD X, Y, Z to Team A" → action:"addToTeamA", playersA:[...] (APPEND to existing players)
+1. "add <NAME> to Team A" → action:"addToTeamA", playersA:["<NAME>"] (APPEND, do NOT set team name)
+2. "add <NAME> to Team B" → action:"addToTeamB", playersB:["<NAME>"] (APPEND, do NOT set team name)
+3. "Team A name is <NAME>" → if <NAME> is a short person name → action:"addToTeamA", playersA:["<NAME>"]; if <NAME> is a long team-like phrase → teamA:"<NAME>"
+4. "Team B name is <NAME>" → same logic for Team B
+5. "Team A is <TEAM NAME>" → teamA:"<TEAM NAME>" (set team name)
+6. "Team B is <TEAM NAME>" → teamB:"<TEAM NAME>" (set team name)
+7. "Team A players ARE X, Y, Z" → action:"setTeamA", playersA:[...] (REPLACE all existing players)
+8. "ADD X, Y, Z to Team A" → action:"addToTeamA", playersA:[...] (APPEND to existing players)
 
 Understand Hinglish, Telugu-English mix, and casual cricket talk.
 Examples:
-- "Team A is VK Boys and Team B is Titans" → {teamA:"VK Boys", teamB:"Titans"}
+- "Team A is VK Boys and Team B is Titans" → {action:"setTeamA", teamA:"VK Boys", teamB:"Titans"}
+- "Team A name is VK Boys" → {teamA:"VK Boys"}  (sounds like a team name)
+- "Team A name is Santosh" → {action:"addToTeamA", playersA:["Santosh"]}   (Santosh is a person)
+- "Team B name is Rahul" → {action:"addToTeamB", playersB:["Rahul"]}
+- "Team A name is Weekend Warriors" → {teamA:"Weekend Warriors"}  (team-like phrase)
+- "Team A name is Sai" → {action:"addToTeamA", playersA:["Sai"]}  (person name)
 - "Team A players are Sai, Santosh, Rahul" → {action:"setTeamA", playersA:["Sai","Santosh","Rahul"]}
 - "Add Rahul to Team A" → {action:"addToTeamA", playersA:["Rahul"]}
-- "Team A name is Santosh" → {action:"addToTeamA", playersA:["Santosh"]}   (NOT teamA:"Santosh"!)
-- "Team A name is VK Boys" → {teamA:"VK Boys"}  (sounds like a team name)
 - "Add players Sai, Santosh to Team B" → {action:"addToTeamB", playersB:["Sai","Santosh"]}
 - "Team A won the toss and chose to bat" → {tossWinner:"A", tossChoice:"bat"}
 - "VK Boys vs Titans at Terrace" → {teamA:"VK Boys", teamB:"Titans", ground:"Terrace"}

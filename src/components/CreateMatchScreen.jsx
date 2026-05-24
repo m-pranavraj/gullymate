@@ -153,6 +153,32 @@ export default function CreateMatchScreen({ onNavigate }) {
       return
     }
 
+    // Handle "Team A name is X" or "Team B name is X" — set team name
+    const teamNameMatch = lower.match(/team\s*(a|b)\s+name\s+is\s+(.+)/)
+    if (teamNameMatch) {
+      const team = teamNameMatch[1].toUpperCase()
+      const name = teamNameMatch[2].trim()
+      if (name) {
+        if (team === 'A') setTeamA(name)
+        else setTeamB(name)
+        setAiResult({ action: `setTeam${team}`, details: `Team ${team} name set to "${name}"` })
+      }
+      return
+    }
+
+    // Handle "Team A is X" or "Team B is X" — set team name
+    const teamIsMatch = lower.match(/team\s*(a|b)\s+is\s+(.+)/)
+    if (teamIsMatch) {
+      const team = teamIsMatch[1].toUpperCase()
+      const name = teamIsMatch[2].trim()
+      if (name) {
+        if (team === 'A') setTeamA(name)
+        else setTeamB(name)
+        setAiResult({ action: `setTeam${team}`, details: `Team ${team} name set to "${name}"` })
+      }
+      return
+    }
+
     const resolveNames = (names) => {
       if (!groupPlayers) return names
       // Only keep names that actually match a group player (don't create new names)
