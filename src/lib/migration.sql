@@ -48,6 +48,10 @@ CREATE TABLE IF NOT EXISTS public.groups (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Add columns that may be missing if table was created by an older schema version
+ALTER TABLE public.groups ADD COLUMN IF NOT EXISTS share_code TEXT;
+ALTER TABLE public.groups ADD COLUMN IF NOT EXISTS snapshot JSONB;
+
 ALTER TABLE public.groups ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Users can CRUD own groups" ON public.groups;
@@ -152,8 +156,10 @@ CREATE TABLE IF NOT EXISTS public.matches (
   status TEXT DEFAULT 'live',
   created_at TIMESTAMPTZ DEFAULT NOW(),
   ended_at TIMESTAMPTZ,
-  match_data JSONB -- full match object with batting stats, ball history, etc
+  match_data JSONB
 );
+
+ALTER TABLE public.matches ADD COLUMN IF NOT EXISTS share_code TEXT;
 
 ALTER TABLE public.matches ENABLE ROW LEVEL SECURITY;
 
