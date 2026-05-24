@@ -136,7 +136,13 @@ export default function CollaborativeAccess({ onBack }) {
                             {copied === m.id ? '✓ Copied' : 'Copy'}
                           </button>
                         </div>
-                        <p className="text-[9px] text-zinc-600 mt-1.5">Share this code so others can join as scorers</p>
+                        <div className="flex items-center justify-between mt-1.5">
+                          <p className="text-[9px] text-zinc-600">Share code so others can join as scorers</p>
+                          <button onClick={() => { navigator.clipboard.writeText(`${window.location.origin}${window.location.pathname}#/live/${m.id}`); setCopied(`link-${m.id}`); setTimeout(() => setCopied(null), 2000) }}
+                            className="px-3 py-1.5 rounded-lg bg-neon-blue/20 text-neon-blue text-[9px] font-bold active:scale-90 transition-all whitespace-nowrap">
+                            {copied === `link-${m.id}` ? '✓ Copied' : '🔗 Share Live Link'}
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>

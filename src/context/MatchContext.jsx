@@ -1,9 +1,23 @@
-import { createContext, useContext, useState, useCallback, useEffect } from 'react'
+import { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react'
 import { storage } from '../utils/storage'
 import { getSupabase, STORAGE_KEYS } from '../lib/supabase'
 import { useAuth } from './AuthContext'
 
 const MatchContext = createContext(null)
+
+const parseMatchFromDB = (m) => {
+  const md = m.match_data || {}
+  const { match_data: _, ...cleanMd } = md
+  return {
+    id: m.id,
+    ...cleanMd,
+    ownerId: m.owner_id,
+    motm: m.motm || md.motm || null,
+    createdAt: new Date(m.created_at).getTime(),
+    status: m.status || 'completed',
+    endedAt: m.ended_at ? new Date(m.ended_at).getTime() : undefined,
+  }
+}
 
 export function MatchProvider({ children }) {
   const { user } = useAuth()
@@ -13,6 +27,8 @@ export function MatchProvider({ children }) {
   const [activities, setActivities] = useState(() => storage.get('activities') || [])
   const [rules, setRules] = useState(() => storage.get('rules') || null)
   const [collaborators, setCollaborators] = useState(() => storage.get('collaborators') || [])
+  const ownUpdateRef = useRef(false)
+  const collabSubRef = useRef(null)
 
   // ── Load matches on mount ───────────────────────────────────
   useEffect(() => {
@@ -41,19 +57,7 @@ export function MatchProvider({ children }) {
           .eq('owner_id', user.id)
           .order('created_at', { ascending: false })
         if (error) throw error
-        const loaded = (data || []).map(m => {
-          const md = m.match_data || {}
-          // Strip nested match_data to clean up old buggy syncs
-          const { match_data: _, ...cleanMd } = md
-          return {
-            id: m.id,
-            ...cleanMd,
-            motm: m.motm || md.motm || null,
-            createdAt: new Date(m.created_at).getTime(),
-            status: m.status || 'completed',
-            endedAt: m.ended_at ? new Date(m.ended_at).getTime() : undefined,
-          }
-        })
+        const loaded = (data || []).map(parseMatchFromDB)
         setMatches(loaded)
         // Restore live match from Supabase so progress isn't lost on tab close
         const live = loaded.find(m => m.status === 'live')
@@ -66,6 +70,48 @@ export function MatchProvider({ children }) {
       setMatchesLoaded(true)
     })()
   }, [user])
+
+  // ── Load a match by ID (used by collab link guests) ────────
+  const loadMatchById = useCallback(async (matchId) => {
+    // Try localStorage first
+    let match = matches.find(m => m.id === matchId)
+    if (match) { setLiveMatch(match); return match }
+
+    // Try Supabase
+    const sb = getSupabase()
+    if (!sb) return null
+    try {
+      const { data, error } = await sb.from('matches').select('*').eq('id', matchId).single()
+      if (error) throw error
+      if (data) {
+        match = parseMatchFromDB(data)
+        setLiveMatch(match)
+        return match
+      }
+    } catch (e) { console.warn('Failed to load match by ID:', e) }
+    return null
+  }, [matches])
+
+  // ── Realtime subscription for live match collaboration ─────
+  useEffect(() => {
+    if (!liveMatch?.id) return
+    const sb = getSupabase()
+    if (!sb) return
+
+    const channel = sb.channel(`match-collab-${liveMatch.id}`)
+      .on('postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'matches', filter: `id=eq.${liveMatch.id}` },
+        (payload) => {
+          if (ownUpdateRef.current) { ownUpdateRef.current = false; return }
+          const updated = parseMatchFromDB(payload.new)
+          setLiveMatch(prev => prev?.id === updated.id ? { ...prev, ...updated } : prev)
+        }
+      )
+      .subscribe()
+
+    collabSubRef.current = channel
+    return () => { sb.removeChannel(channel); collabSubRef.current = null }
+  }, [liveMatch?.id])
 
   // ── Persist to localStorage (guests/no-Supabase only) ──────
   useEffect(() => {
@@ -86,12 +132,16 @@ export function MatchProvider({ children }) {
   // ── Sync match to Supabase ──────────────────────────────────
   const syncMatchToSupabase = useCallback((match) => {
     const sb = getSupabase()
-    if (!sb || !user?.id || user?.isGuest) return
+    if (!sb) return
+    // Allow guests to sync if the match has an ownerId (collab mode)
+    const ownerId = match.ownerId || user?.id
+    if (!ownerId) return
     // Strip any nested match_data to prevent exponential bloat
     const { match_data: _, ...cleanState } = match
+    ownUpdateRef.current = true
     sb.from('matches').upsert({
       id: match.id,
-      owner_id: user.id,
+      owner_id: ownerId,
       team_a: match.teamA,
       team_b: match.teamB,
       score_a: match.scoreA || 0,
@@ -110,7 +160,7 @@ export function MatchProvider({ children }) {
       created_at: new Date(match.createdAt || Date.now()).toISOString(),
       ended_at: match.endedAt ? new Date(match.endedAt).toISOString() : null,
     }).then().catch(e => console.warn('Match sync error:', e))
-  }, [user?.id, user?.isGuest])
+  }, [user?.id])
 
   // ── Match CRUD ──────────────────────────────────────────────
   const createMatch = useCallback((matchData) => {
@@ -230,7 +280,7 @@ export function MatchProvider({ children }) {
       createMatch, updateLiveMatch, endMatch, endMatchWithWinner, deleteMatch,
       resumeMatch, addActivity, joinMatch, saveRules,
       addCollaborator, removeCollaborator, getMatch,
-      updateMatchDate, updateMatchMOTM
+      updateMatchDate, updateMatchMOTM, loadMatchById
     }}>
       {children}
     </MatchContext.Provider>

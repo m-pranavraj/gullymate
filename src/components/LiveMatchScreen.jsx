@@ -12,9 +12,9 @@ const BALL_TYPES = {
   'W': '#FFD700', 'WD': '#FFA500', 'NB': '#FF69B4',
 }
 
-export default function LiveMatchScreen({ onNavigate }) {
+export default function LiveMatchScreen({ onNavigate, collabMatchId }) {
   const { user } = useAuth()
-  const { liveMatch, updateLiveMatch, endMatchWithWinner, addActivity, updateMatchMOTM } = useMatch()
+  const { liveMatch, updateLiveMatch, endMatchWithWinner, addActivity, updateMatchMOTM, loadMatchById } = useMatch()
   const { groups, activeGroup, recordMatchForGroup } = useGroups()
   const [commentary, setCommentary] = useState('')
   const [showCelebration, setShowCelebration] = useState(null)
@@ -29,8 +29,14 @@ export default function LiveMatchScreen({ onNavigate }) {
   const [voiceTranscript, setVoiceTranscript] = useState('')
   const [aiTaunt, setAiTaunt] = useState('')
   const [pickMode, setPickMode] = useState(null)
+  const [copied, setCopied] = useState(false)
   const timelineRef = useRef(null)
   const recognitionRef = useRef(null)
+
+  // Load collab match by ID when opened via share link
+  useEffect(() => {
+    if (collabMatchId) loadMatchById(collabMatchId)
+  }, [collabMatchId])
 
   if (!liveMatch) return null
 
@@ -49,7 +55,7 @@ export default function LiveMatchScreen({ onNavigate }) {
   const currentWickets = match[wicketKey] || 0
   const currentBalls = match[ballKey] || 0
   const playersCount = isBattingA ? match.playersA?.length : match.playersB?.length || 5
-  const maxWickets = playersCount - 1
+  const maxWickets = currentRules.lastManStanding ? playersCount : playersCount - 1
   const isChasing = match.currentInnings > 1
   const currentBatsman = match.currentBatsman
   const currentBowler = match.currentBowler
@@ -58,9 +64,20 @@ export default function LiveMatchScreen({ onNavigate }) {
   const targetNeeded = isChasing ? opponentScore + 1 : Infinity
   const targetCompleted = isChasing && currentScore >= targetNeeded
 
+  const jokerName = (currentRules.jokerEnabled && match.jokerName) || null
+
   const battingPlayers = match[battingStatsKey] || []
   const availableBatsmen = battingPlayers.filter(p => !p.out)
-  const bowlersList = (isBattingA ? match.playersB : match.playersA) || []
+  // If joker exists and isn't already in batting stats, add a virtual entry
+  const jokerBattingEntry = jokerName && !availableBatsmen.find(p => p.name === jokerName)
+    ? { name: jokerName, runs: 0, balls: 0, fours: 0, sixes: 0, out: false, status: 'yetToBat' }
+    : null
+  const allAvailableBatsmen = jokerBattingEntry ? [...availableBatsmen, jokerBattingEntry] : availableBatsmen
+  // Build bowlers list; include joker in bowling options
+  const bowlingTeamPlayers = (isBattingA ? match.playersB : match.playersA) || []
+  const bowlersList = jokerName
+    ? [...bowlingTeamPlayers.filter(p => p.name !== jokerName), ...(isBattingA ? match.playersA : match.playersB)?.filter(p => p.name === jokerName) || []]
+    : bowlingTeamPlayers
 
   // AI Taunt every 6 balls
   useEffect(() => {
@@ -156,12 +173,41 @@ export default function LiveMatchScreen({ onNavigate }) {
       newScore += runs + 1; newExtras += 1; isLegal = false
       commentaryLine = getRandomLine('wide') || 'Wide!'
     } else if (type === 'noball') {
-      newScore += runs + 1; newExtras += 1; isLegal = false
+      const nbRuns = currentRules.noBallTwoRuns ? Math.max(runs, 2) : runs + 1
+      newScore += nbRuns; newExtras += 1; isLegal = false
       commentaryLine = getRandomLine('noBall') || 'No ball!'
     } else {
       newScore += runs
       if (runs === 4) { newBoundaries += 1; commentaryLine = getRandomLine('four') || 'Four!' }
-      else if (runs === 6) { newBoundaries += 1; commentaryLine = getRandomLine('six') || 'Six!'; setShowCelebration('six'); if (navigator.vibrate) navigator.vibrate([50, 50, 50]) }
+      else if (runs === 6) {
+        newBoundaries += 1; commentaryLine = getRandomLine('six') || 'Six!'; setShowCelebration('six'); if (navigator.vibrate) navigator.vibrate([50, 50, 50])
+        // Direct six = out
+        if (currentRules.directSixOut) {
+          newWickets += 1
+          if (currentBatsman) {
+            newStats = newStats.map(s =>
+              s.name === currentBatsman ? { ...s, out: true, balls: (s.balls || 0) + 1, sixes: (s.sixes || 0) + 1, status: 'out' } : s
+            )
+          }
+          commentaryLine = 'Six and OUT! 🔥'
+          if (newWickets >= maxWickets) {
+            setTimeout(() => { setCommentary('All out!'); handleEndInnings() }, 500)
+          } else {
+            setTimeout(() => { setPickMode('batsman'); setShowBatsmanPicker(true) }, 300)
+          }
+          // Don't proceed to normal stats update below
+          const newHistory = [...ballHistory, { type, runs: 6, label: '6', bowler: currentBowler, batsman: currentBatsman, innings: match.currentInnings || 1 }]
+          updateLiveMatch({
+            [scoreKey]: newScore, [wicketKey]: newWickets, [ballKey]: isLegal ? newBalls + 1 : newBalls,
+            [extrasKey]: newExtras, [boundariesKey]: newBoundaries, [battingStatsKey]: newStats,
+            timeline: [...(match.timeline || []), { ...ballEvent, runs: 6 }], ballHistory: newHistory,
+          })
+          setCommentary(commentaryLine)
+          addActivity(user?.name || 'Player', '6 & OUT')
+          setTimeout(() => setCommentary(''), 2500)
+          return
+        }
+      }
       else commentaryLine = runs === 0 ? 'Dot ball!' : `${runs} run${runs > 1 ? 's' : ''}!`
       if (currentBatsman) {
         newStats = newStats.map(s =>
@@ -227,13 +273,19 @@ export default function LiveMatchScreen({ onNavigate }) {
   }, [match, currentScore, currentWickets, currentBalls, user, updateLiveMatch, addActivity, scoreKey, wicketKey, ballKey, extrasKey, boundariesKey, battingStatsKey, battingPlayers])
 
   const selectBatsman = useCallback((name) => {
-    updateLiveMatch({ currentBatsman: name })
+    // If joker isn't in batting stats yet, add them
+    if (jokerName === name && !battingPlayers.find(p => p.name === name)) {
+      const newStats = [...battingPlayers, { name, runs: 0, balls: 0, fours: 0, sixes: 0, out: false, status: 'batting' }]
+      updateLiveMatch({ currentBatsman: name, [battingStatsKey]: newStats })
+    } else {
+      updateLiveMatch({ currentBatsman: name })
+    }
     setShowBatsmanPicker(false)
     setCommentary(`🏏 ${name} is batting`)
     addActivity(user?.name || 'Player', `${name} came to bat`)
     setTimeout(() => setCommentary(''), 1500)
     if (navigator.vibrate) navigator.vibrate(30)
-  }, [updateLiveMatch, addActivity, user])
+  }, [updateLiveMatch, addActivity, user, jokerName, battingPlayers, battingStatsKey])
 
   const selectBowler = useCallback((name) => {
     updateLiveMatch({ currentBowler: name })
@@ -412,7 +464,7 @@ export default function LiveMatchScreen({ onNavigate }) {
                 <button onClick={() => setShowBatsmanPicker(false)} className="text-gray-400 text-sm">✕</button>
               )}
             </div>
-            {availableBatsmen.length === 0 ? (
+            {allAvailableBatsmen.length === 0 ? (
               <div className="text-center py-6">
                 <p className="text-gray-400">All players are out!</p>
                 <button onClick={() => { setShowBatsmanPicker(false); setShowEndDialog(true) }}
@@ -422,7 +474,7 @@ export default function LiveMatchScreen({ onNavigate }) {
               </div>
             ) : (
               <div className="space-y-1.5">
-                {availableBatsmen.map((p, i) => (
+                {allAvailableBatsmen.map((p, i) => (
                   <button key={i}
                     onClick={() => selectBatsman(p.name)}
                     className={`w-full text-left px-4 py-3.5 rounded-xl font-medium text-sm transition-all active:scale-[0.97] flex items-center gap-3 ${
@@ -644,6 +696,10 @@ export default function LiveMatchScreen({ onNavigate }) {
           )}
         </div>
         <div className="flex gap-1.5">
+          <button onClick={() => { navigator.clipboard.writeText(`${window.location.origin}${window.location.pathname}#/live/${liveMatch.id}`); setCopied(true); setTimeout(() => setCopied(false), 2000) }}
+            className="px-2.5 py-1.5 rounded-xl bg-neon-green/15 text-neon-green text-[10px] font-bold border border-neon-green/30 hover:bg-neon-green/25 transition-all">
+            {copied ? '✅' : '🔗'}
+          </button>
           <button onClick={() => setShowScoreCard(true)}
             className="px-2.5 py-1.5 rounded-xl bg-white/10 text-white text-[10px] font-bold hover:bg-white/20 transition-all">
             📊

@@ -9,14 +9,16 @@ const COLORS = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD'
 const PLAYER_SUGGESTIONS_A = ['Virat', 'Rohit', 'Dhoni', 'Sachin', 'Bumrah', 'Jadeja', 'Shami', 'Kohli', 'Pant', 'Hardik']
 const PLAYER_SUGGESTIONS_B = ['Sai', 'Santosh', 'Rahul', 'Vamsi', 'Arjun', 'Karthik', 'Surya', 'Rishabh', 'Ishan', 'Ravi']
 
-export default function CreateMatchScreen({ onNavigate }) {
-  const { createMatch, rules } = useMatch()
+export default function CreateMatchScreen({ onNavigate, rematchData }) {
+  const { createMatch, rules: globalRules } = useMatch()
   const { groups } = useGroups()
-  const [teamA, setTeamA] = useState('')
-  const [teamB, setTeamB] = useState('')
-  const [playersA, setPlayersA] = useState([])
-  const [playersB, setPlayersB] = useState([])
-  const [ground, setGround] = useState('')
+
+  // Pre-fill from rematch if provided
+  const [teamA, setTeamA] = useState(rematchData?.teamA || '')
+  const [teamB, setTeamB] = useState(rematchData?.teamB || '')
+  const [playersA, setPlayersA] = useState(rematchData?.playersA || [])
+  const [playersB, setPlayersB] = useState(rematchData?.playersB || [])
+  const [ground, setGround] = useState(rematchData?.ground || '')
   const [tossWinner, setTossWinner] = useState(null)
   const [tossChoice, setTossChoice] = useState('bat')
   const [tossAnimating, setTossAnimating] = useState(false)
@@ -31,11 +33,14 @@ export default function CreateMatchScreen({ onNavigate }) {
   const [dragIndex, setDragIndex] = useState(null)
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [voiceTranscript, setVoiceTranscript] = useState('')
-  const [matchType, setMatchType] = useState('individual')
-  const [selectedGroupId, setSelectedGroupId] = useState('')
+  const [matchType, setMatchType] = useState(rematchData?.matchType || 'individual')
+  const [selectedGroupId, setSelectedGroupId] = useState(rematchData?.groupId || '')
   const [editingPlayerId, setEditingPlayerId] = useState(null)
   const [editingPlayerName, setEditingPlayerName] = useState('')
   const [selectedGroupPlayers, setSelectedGroupPlayers] = useState(new Set())
+  const [localRules, setLocalRules] = useState(rematchData?.rules || globalRules || null)
+  const [showRules, setShowRules] = useState(!!rematchData)
+  const [jokerName, setJokerName] = useState(rematchData?.jokerName || '')
   const addPlayerInputRef = useRef(null)
   const recognitionRef = useRef(null)
   const silenceTimerRef = useRef(null)
@@ -382,13 +387,15 @@ export default function CreateMatchScreen({ onNavigate }) {
     const nameB = teamB.trim() || 'Team B'
     if (playersA.length < 1 || playersB.length < 1) { setError('Each team needs at least 1 player'); return }
     const shareCode = generateShareCode()
+    const activeRules = localRules || globalRules || undefined
     createMatch({
       teamA: nameA, teamB: nameB,
       playersA, playersB,
       playerCount: Math.max(playersA.length, playersB.length),
       ground: ground.trim() || 'Gully Ground',
       shareCode, nickname,
-      rules: rules || undefined,
+      rules: activeRules,
+      jokerName: activeRules?.jokerEnabled ? jokerName.trim() || null : null,
       tossWinner: tossWinner === 'A' ? nameA : tossWinner === 'B' ? nameB : null,
       tossChoice: tossWinner ? tossChoice : null,
       scoreA: 0, scoreB: 0, wicketsA: 0, wicketsB: 0, ballsA: 0, ballsB: 0,
@@ -879,6 +886,64 @@ export default function CreateMatchScreen({ onNavigate }) {
           >
             ✕ Clear All
           </button>
+        </div>
+
+        {/* Per-Match Rules */}
+        <div className="card-glass p-4">
+          <button onClick={() => setShowRules(!showRules)}
+            className="w-full flex items-center justify-between">
+            <h2 className="font-bold text-sm flex items-center gap-2">
+              <span className="text-neon-blue">⚙</span> Match Rules
+              {localRules && (localRules.lastManStanding || localRules.jokerEnabled || localRules.directSixOut) && (
+                <span className="text-[10px] text-neon-green font-normal">({[
+                  localRules.lastManStanding && 'Last Man',
+                  localRules.jokerEnabled && 'Joker',
+                  localRules.directSixOut && 'Six=Out',
+                ].filter(Boolean).join(', ')})</span>
+              )}
+            </h2>
+            <span className={`text-gray-500 transition-transform ${showRules ? 'rotate-180' : ''}`}>▼</span>
+          </button>
+          {showRules && (
+            <div className="mt-3 space-y-2 animate-fade-up">
+              {[
+                { key: 'lastManStanding', label: '🏃 Last Man Standing', desc: 'Last player bats alone — innings ends only when all out' },
+                { key: 'directSixOut', label: '🚀 Direct Six = Out', desc: 'Hit a six and you\'re out' },
+                { key: 'oneTipOneHand', label: '✋ One-tip One-hand', desc: 'Catch with one hand after one tip = out' },
+                { key: 'noBallTwoRuns', label: '⛔ No Ball = 2 Runs', desc: 'No ball gives 2 runs instead of 1' },
+                { key: 'twoBounceRetire', label: '🔄 Two Bounce Retire', desc: 'Retire after 2 bounce catches' },
+                { key: 'rebattingAllowed', label: '🔄 Re-batting', desc: 'Batsmen can bat again after dismissal' },
+              ].map(rule => (
+                <div key={rule.key} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
+                  <div className="flex-1 pr-3">
+                    <p className="text-xs font-medium">{rule.label}</p>
+                    <p className="text-[10px] text-gray-500">{rule.desc}</p>
+                  </div>
+                  <button onClick={() => setLocalRules(prev => ({ ...(prev || {}), [rule.key]: !(prev?.[rule.key] || false) }))}
+                    className={`w-12 h-7 rounded-full transition-all shrink-0 ${(localRules?.[rule.key]) ? 'bg-neon-green' : 'bg-white/20'}`}>
+                    <div className={`w-5 h-5 rounded-full bg-white shadow-lg transition-transform ${(localRules?.[rule.key]) ? 'translate-x-6' : 'translate-x-0.5'}`} />
+                  </button>
+                </div>
+              ))}
+              {/* Joker Player */}
+              <div className="pt-2 border-t border-white/10">
+                <div className="flex items-center justify-between py-2">
+                  <div className="flex-1 pr-3">
+                    <p className="text-xs font-medium">🎭 Joker Player</p>
+                    <p className="text-[10px] text-gray-500">One player who can bat & bowl for both teams</p>
+                  </div>
+                  <button onClick={() => setLocalRules(prev => ({ ...(prev || {}), jokerEnabled: !(prev?.jokerEnabled || false) }))}
+                    className={`w-12 h-7 rounded-full transition-all shrink-0 ${localRules?.jokerEnabled ? 'bg-purple-500' : 'bg-white/20'}`}>
+                    <div className={`w-5 h-5 rounded-full bg-white shadow-lg transition-transform ${localRules?.jokerEnabled ? 'translate-x-6' : 'translate-x-0.5'}`} />
+                  </button>
+                </div>
+                {localRules?.jokerEnabled && (
+                  <input type="text" placeholder="Enter joker player name" value={jokerName} onChange={e => setJokerName(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-white/5 border border-purple-500/30 text-white text-xs outline-none focus:border-purple-500 placeholder:text-gray-600" />
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Start Button */}

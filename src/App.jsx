@@ -25,6 +25,10 @@ function AppContent() {
     if (hash.startsWith('leaderboard/')) {
       return { screen: 'publicLeaderboard', params: { shareCode: hash.split('/')[1] } }
     }
+    if (hash.startsWith('live/')) {
+      const matchId = hash.split('/')[1]
+      return { screen: 'live', params: { collabMatchId: matchId } }
+    }
     return null
   }
 
@@ -50,9 +54,9 @@ function AppContent() {
     return () => window.removeEventListener('hashchange', onHashChange)
   }, [])
 
-  // Don't override when viewing a public leaderboard
+  // Don't override when viewing a public leaderboard or live collab
   useEffect(() => {
-    if (screen === 'publicLeaderboard') return
+    if (screen === 'publicLeaderboard' || screen === 'live') return
     if (user) setScreen('home')
     else setScreen('login')
   }, [user])
@@ -69,16 +73,18 @@ function AppContent() {
 
   const navigate = (s, ...args) => {
     setScreen(s)
-    if (args.length > 0) setParams({ matchId: args[0] })
-    else setParams({})
+    if (args.length > 0) {
+      if (typeof args[0] === 'object' && args[0] !== null) setParams(args[0])
+      else setParams({ matchId: args[0] })
+    } else setParams({})
   }
 
   const screens = {
     login: <LoginScreen onNavigate={navigate} />,
     signup: <SignupScreen onNavigate={navigate} />,
     home: <HomeScreen onNavigate={navigate} />,
-    create: <CreateMatchScreen onNavigate={navigate} />,
-    live: <LiveMatchScreen onNavigate={navigate} />,
+    create: <CreateMatchScreen onNavigate={navigate} rematchData={params.rematchData} />,
+    live: <LiveMatchScreen onNavigate={navigate} collabMatchId={params.collabMatchId} />,
     summary: <MatchSummaryScreen matchId={params.matchId} onNavigate={navigate} />,
     rules: <GullyRules onBack={() => navigate('home')} />,
     collab: <CollaborativeAccess onBack={() => navigate('home')} />,

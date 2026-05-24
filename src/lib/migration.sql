@@ -180,6 +180,11 @@ CREATE POLICY "Anyone can view by share code"
 -- Index for share code lookups
 CREATE INDEX IF NOT EXISTS idx_matches_share_code ON public.matches(share_code);
 
+-- Allow anyone (including guests via collab link) to update live matches
+DROP POLICY IF EXISTS "Anyone can update live matches" ON public.matches;
+CREATE POLICY "Anyone can update live matches"
+  ON public.matches FOR UPDATE USING (status = 'live') WITH CHECK (status = 'live');
+
 -- 6. Collaboration (who's scoring a match)
 CREATE TABLE IF NOT EXISTS public.collaborators (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

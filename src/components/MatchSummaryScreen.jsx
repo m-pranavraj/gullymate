@@ -360,6 +360,29 @@ export default function MatchSummaryScreen({ matchId, onNavigate }) {
                 </div>
               </div>
             </div>
+            {/* Rules Used */}
+            {match.rules && (
+              <div className="card-glass p-4">
+                <h3 className="font-bold text-xs mb-2">⚙️ Rules</h3>
+                <div className="flex flex-wrap gap-1">
+                  {[
+                    match.rules.lastManStanding && '🏃 Last Man',
+                    match.rules.jokerEnabled && `🎭 Joker${match.jokerName ? ` (${match.jokerName})` : ''}`,
+                    match.rules.directSixOut && '🚀 Six=Out',
+                    match.rules.oneTipOneHand && '✋ One-tip',
+                    match.rules.noBallTwoRuns && '⛔ NB=2',
+                    match.rules.twoBounceRetire && '🔄 2-Bounce',
+                    match.rules.rebattingAllowed && '🔄 Re-bat',
+                    match.rules.maxBalls !== 6 && `${match.rules.maxBalls}/over`,
+                  ].filter(Boolean).map((tag, i) => (
+                    <span key={i} className="px-2 py-1 rounded-lg bg-white/5 text-[10px] text-gray-300 border border-white/10">{tag}</span>
+                  ))}
+                  {!match.rules.lastManStanding && !match.rules.jokerEnabled && !match.rules.directSixOut && !match.rules.oneTipOneHand && !match.rules.noBallTwoRuns && !match.rules.twoBounceRetire && !match.rules.rebattingAllowed && (match.rules.maxBalls === 6 || !match.rules.maxBalls) && (
+                    <span className="px-2 py-1 rounded-lg bg-white/5 text-[10px] text-gray-500 italic">Standard rules</span>
+                  )}
+                </div>
+              </div>
+            )}
             {/* Timeline */}
             <div className="card-glass p-4">
               <h3 className="font-bold text-xs mb-3">📊 Ball-by-Ball</h3>
@@ -392,7 +415,7 @@ export default function MatchSummaryScreen({ matchId, onNavigate }) {
             className="flex-1 py-4 rounded-2xl font-bold text-sm bg-gradient-to-r from-blue-500 to-blue-600 text-white active:scale-[0.97] transition-all shadow-lg shadow-blue-500/20">
             📤 Share
           </button>
-          <button onClick={() => onNavigate('create')}
+          <button onClick={() => onNavigate('create', { rematchData: { teamA: match.teamA, teamB: match.teamB, playersA: match.playersA, playersB: match.playersB, ground: match.ground, rules: match.rules, matchType: match.matchType, groupId: match.groupId, jokerName: match.jokerName } })}
             className="flex-1 py-4 rounded-2xl font-bold text-sm bg-gradient-to-r from-neon-green to-emerald-500 text-black active:scale-[0.97] transition-all shadow-lg shadow-neon-green/20">
             🔄 Rematch
           </button>
