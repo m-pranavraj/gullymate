@@ -30,11 +30,11 @@ export function getBattingOrder(batters, currentIndex) {
 
 export function selectMOTM(team, battingStats) {
   let bestPlayer = null, bestScore = -1
-  battingStats.forEach((s, idx) => {
+  battingStats.forEach((s) => {
     const total = s.runs * 2 + (s.boundaries || 0) * 2 - s.balls * 0.5
     if (total > bestScore) {
       bestScore = total
-      bestPlayer = team[idx] || 'Unknown'
+      bestPlayer = s.name || 'Unknown'
     }
   })
   return bestPlayer

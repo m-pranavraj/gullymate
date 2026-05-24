@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { AuthProvider, useAuth } from './context/AuthContext'
-import { MatchProvider } from './context/MatchContext'
+import { MatchProvider, useMatch } from './context/MatchContext'
 import { GroupProvider } from './context/GroupContext'
 import { ThemeProvider, useTheme } from './context/ThemeContext'
 import LoginScreen from './components/LoginScreen'
@@ -17,6 +17,7 @@ import PublicLeaderboard from './components/PublicLeaderboard'
 
 function AppContent() {
   const { user } = useAuth()
+  const { liveMatch } = useMatch()
   const { theme, toggleTheme } = useTheme()
 
   const parseHash = () => {
@@ -55,6 +56,16 @@ function AppContent() {
     if (user) setScreen('home')
     else setScreen('login')
   }, [user])
+
+  // Auto-navigate to live match when restored from Supabase on page load
+  const initialLiveCheckDone = useRef(false)
+  useEffect(() => {
+    if (initialLiveCheckDone.current) return
+    if (liveMatch) {
+      initialLiveCheckDone.current = true
+      setScreen('live')
+    }
+  }, [liveMatch])
 
   const navigate = (s, ...args) => {
     setScreen(s)
