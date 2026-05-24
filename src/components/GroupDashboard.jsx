@@ -113,13 +113,12 @@ export default function GroupDashboard({ onNavigate }) {
     recognition.onend = () => {
       setIsVoiceListening(false)
       if (finalText.trim()) {
-        // Split by words: each word = one player name (remove punctuation, skip single letters)
-        const words = finalText.trim()
-          .replace(/[.,;:!?()'"]/g, '')
-          .split(/\s+/)
-          .filter(w => w.length >= 2 && w.length < 30)
-        if (words.length > 0) {
-          words.forEach(name => addPlayerToGroup(group.id, name))
+        // Split by spoken "comma" word and punctuation commas
+        const names = finalText.trim()
+          .replace(/\bcomma\b/gi, ',')
+          .split(/,/).map(n => n.trim()).filter(n => n.length >= 2 && n.length < 30)
+        if (names.length > 0) {
+          names.forEach(name => addPlayerToGroup(group.id, name))
         }
         setVoiceInput('')
         finalText = ''
