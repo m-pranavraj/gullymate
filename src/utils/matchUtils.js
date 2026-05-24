@@ -105,4 +105,6 @@ export const defaultRules = {
   jokerDoubleRuns: false,
   twoBounceRetire: false,
   noBallTwoRuns: false,
+  totalOvers: 0,
+  singleBatsman: true,
 }

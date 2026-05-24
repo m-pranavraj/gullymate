@@ -1,10 +1,10 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { useGroups } from '../context/GroupContext'
 import { useAuth } from '../context/AuthContext'
 import { correctTranscript } from '../utils/groq'
 
 export default function GroupScreen({ onNavigate }) {
-  const { groups, sharedGroups, needsMigration, createGroup, deleteGroup, setActiveGroupById, getGroupByShareCode } = useGroups()
+  const { groups, sharedGroups, needsMigration, createGroup, deleteGroup, setActiveGroupById, getGroupByShareCode, claimPlayerInGroup, addPlayerToGroup } = useGroups()
   const { user } = useAuth()
   const [showCreate, setShowCreate] = useState(false)
   const [groupName, setGroupName] = useState('')
@@ -17,6 +17,10 @@ export default function GroupScreen({ onNavigate }) {
   const [accessError, setAccessError] = useState('')
   const [accessLoading, setAccessLoading] = useState(false)
   const [copiedId, setCopiedId] = useState(null)
+  const [pendingGroupId, setPendingGroupId] = useState(null)
+  const [pendingPlayers, setPendingPlayers] = useState([])
+  const [showIdentityPicker, setShowIdentityPicker] = useState(false)
+  const [customName, setCustomName] = useState('')
 
   const handleVoiceCreate = useCallback(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
@@ -52,6 +56,30 @@ export default function GroupScreen({ onNavigate }) {
     onNavigate('groupDashboard')
   }
 
+  const confirmIdentity = (playerName) => {
+    if (pendingGroupId && user) {
+      claimPlayerInGroup(pendingGroupId, playerName, user.id, user.name)
+    }
+    setShowIdentityPicker(false)
+    setPendingGroupId(null)
+    setPendingPlayers([])
+    setActiveGroupById(pendingGroupId)
+    onNavigate('groupDashboard')
+  }
+
+  const addAndConfirm = () => {
+    const name = customName.trim()
+    if (!name || !pendingGroupId) return
+    addPlayerToGroup(pendingGroupId, name)
+    if (user) claimPlayerInGroup(pendingGroupId, name, user.id, user.name)
+    setShowIdentityPicker(false)
+    setPendingGroupId(null)
+    setPendingPlayers([])
+    setCustomName('')
+    setActiveGroupById(pendingGroupId)
+    onNavigate('groupDashboard')
+  }
+
   const handleAccessGroup = async () => {
     if (!accessCode.trim()) { setAccessError('Enter a share code'); return }
     setAccessLoading(true)
@@ -60,6 +88,15 @@ export default function GroupScreen({ onNavigate }) {
     const group = await getGroupByShareCode(code)
     setAccessLoading(false)
     if (group) {
+      if (user && !user.isGuest) {
+        const matched = group.players.filter(p => p.name.toLowerCase() === user.name.toLowerCase())
+        if (matched.length > 0) {
+          setPendingGroupId(group.id)
+          setPendingPlayers(group.players)
+          setShowIdentityPicker(true)
+          return
+        }
+      }
       setActiveGroupById(group.id)
       onNavigate('groupDashboard')
     } else {
@@ -164,6 +201,44 @@ export default function GroupScreen({ onNavigate }) {
             </div>
             {voiceTranscript && <p className="text-[10px] text-zinc-500 mt-1 italic">"{voiceTranscript}"</p>}
             {error && <p className="text-red-400 text-xs mt-2">{error}</p>}
+          </div>
+        )}
+
+        {/* Identity Picker Modal */}
+        {showIdentityPicker && (
+          <div className="fixed inset-0 z-50 bg-black/90 flex items-end sm:items-center p-4 animate-slide-up">
+            <div className="card-glass p-5 w-full max-w-sm mx-auto">
+              <h2 className="font-bold text-base mb-1 flex items-center gap-2">
+                <span className="text-purple-400">👤</span> Who are you?
+              </h2>
+              <p className="text-[10px] text-gray-500 mb-4">Select your name to sync your account, or add a new one</p>
+              <div className="space-y-1 max-h-52 overflow-y-auto mb-3">
+                {pendingPlayers.map((p, i) => (
+                  <button key={i} onClick={() => confirmIdentity(p.name)}
+                    className="w-full text-left px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-sm font-medium hover:bg-white/10 active:scale-[0.97] transition-all flex items-center gap-3">
+                    <span className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-xs font-bold shrink-0">
+                      {p.name[0]?.toUpperCase() || '?'}
+                    </span>
+                    <span>{p.name}</span>
+                    {p.name.toLowerCase() === user?.name?.toLowerCase() && (
+                      <span className="ml-auto text-[10px] text-neon-green">✓ Match</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+              <div className="border-t border-white/10 pt-3">
+                <p className="text-[10px] text-gray-500 mb-2">Or add a new name (if you're not in the list)</p>
+                <div className="flex gap-2">
+                  <input type="text" placeholder="Your name" value={customName} onChange={e => setCustomName(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && addAndConfirm()}
+                    className="flex-1 px-4 py-3 rounded-xl bg-zinc-800/80 border border-zinc-700 text-white placeholder-zinc-500 text-sm outline-none focus:border-purple-500/50" />
+                  <button onClick={addAndConfirm} disabled={!customName.trim()}
+                    className="px-4 py-3 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold text-sm active:scale-90 transition-all disabled:opacity-40">
+                    Add
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 

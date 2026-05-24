@@ -21,6 +21,7 @@ export default function LiveMatchScreen({ onNavigate, collabMatchId }) {
   const [showInningsBreak, setShowInningsBreak] = useState(false)
   const [showEndDialog, setShowEndDialog] = useState(false)
   const [showTargetDialog, setShowTargetDialog] = useState(false)
+  const [showSuperOverDialog, setShowSuperOverDialog] = useState(false)
   const [showBatsmanPicker, setShowBatsmanPicker] = useState(false)
   const [showBowlerPicker, setShowBowlerPicker] = useState(false)
   const [showScoreCard, setShowScoreCard] = useState(false)
@@ -32,6 +33,7 @@ export default function LiveMatchScreen({ onNavigate, collabMatchId }) {
   const [copied, setCopied] = useState(false)
   const timelineRef = useRef(null)
   const recognitionRef = useRef(null)
+  const scriptEndRef = useRef(false)
 
   // Load collab match by ID when opened via share link
   useEffect(() => {
@@ -63,6 +65,10 @@ export default function LiveMatchScreen({ onNavigate, collabMatchId }) {
   const opponentScore = isBattingA ? (match.scoreB || 0) : (match.scoreA || 0)
   const targetNeeded = isChasing ? opponentScore + 1 : Infinity
   const targetCompleted = isChasing && currentScore >= targetNeeded
+  const isSuperOver = match.currentInnings >= 3
+  const maxBallsPerInnings = isSuperOver
+    ? (match.superOver?.maxBalls || 6)
+    : (currentRules.totalOvers > 0 ? currentRules.totalOvers * currentRules.maxBalls : Infinity)
 
   const jokerName = (currentRules.jokerEnabled && match.jokerName) || null
 
@@ -106,6 +112,14 @@ export default function LiveMatchScreen({ onNavigate, collabMatchId }) {
       setTimeout(() => setCommentary(''), 3000)
     }
   }, [currentScore])
+
+  // Auto-end innings when overs limit reached
+  useEffect(() => {
+    if (maxBallsPerInnings !== Infinity && currentBalls >= maxBallsPerInnings && !showInningsBreak && !showEndDialog && !scriptEndRef.current) {
+      scriptEndRef.current = true
+      setTimeout(() => { scriptEndRef.current = false; setCommentary('Overs complete!'); handleEndInnings() }, 300)
+    }
+  }, [currentBalls])
 
   // Auto-prompt batsman pick if none selected
   useEffect(() => {
@@ -296,22 +310,128 @@ export default function LiveMatchScreen({ onNavigate, collabMatchId }) {
     if (navigator.vibrate) navigator.vibrate(30)
   }, [updateLiveMatch, addActivity, user])
 
+  const confirmEndInningsSO = useCallback(() => {
+    setShowInningsBreak(false)
+    // Super Over: after Team B bats, Team A bats. After that, end match.
+    const nextInnings = (match.currentInnings || 1) + 1
+    if (match.currentInnings >= 4) {
+      // Both super over innings done
+      const soData = match.superOver || {}
+      const soScores = soData.scores || []
+      const scoreTeamB = soScores[0] || 0
+      const scoreTeamA = soScores[1] || 0
+      const soWinner = scoreTeamA > scoreTeamB ? match.teamA : scoreTeamB > scoreTeamA ? match.teamB : null
+      updateLiveMatch({
+        status: 'completed',
+        winner: soWinner,
+        superOver: { ...soData, active: false, winner: soWinner },
+      })
+      addActivity('system', `Super Over complete! ${soWinner ? `${soWinner} wins!` : 'Still tied!'}`)
+      setTimeout(() => setShowEndDialog(true), 300)
+      return
+    }
+    // Second super over innings — Team A bats
+    updateLiveMatch({
+      currentInnings: nextInnings,
+      currentBatting: 'A',
+      currentBatsman: null,
+      currentBowler: null,
+    })
+    addActivity('system', `Super Over — ${match.teamA} to bat`)
+  }, [match, updateLiveMatch, addActivity])
+
   const handleEndInnings = useCallback(() => {
     if (match.currentInnings <= 1) setShowInningsBreak(true)
-    else setShowEndDialog(true)
-  }, [match])
+    else if (match.currentInnings === 2 && !match.superOver?.active) setShowEndDialog(true)
+    else if (match.superOver?.active) {
+      // Super Over innings break
+      const soScores = match.superOver?.scores || []
+      const currentSOInnings = (match.currentInnings || 1) - 3 // 0 for Team B, 1 for Team A
+      const battingScore = currentScore
+      const newSoScores = [...soScores]
+      newSoScores[currentSOInnings] = battingScore
+      const isTeamBBatting = match.currentBatting === 'B'
+      updateLiveMatch({
+        superOver: { ...match.superOver, scores: newSoScores },
+      })
+      if (isTeamBBatting) {
+        setShowInningsBreak(true)
+      } else {
+        // Both done — auto-compute winner
+        const totalA = (newSoScores[1] || 0)
+        const totalB = (newSoScores[0] || 0)
+        const soWinner = totalA > totalB ? match.teamA : totalB > totalA ? match.teamB : null
+        updateLiveMatch({
+          status: 'completed',
+          winner: soWinner,
+          superOver: { ...match.superOver, scores: newSoScores, active: false, winner: soWinner },
+        })
+        addActivity('system', `Super Over complete! ${soWinner ? `${soWinner} wins!` : 'Still tied!'}`)
+        setTimeout(() => setShowEndDialog(true), 300)
+      }
+    } else setShowEndDialog(true)
+  }, [match, currentScore, updateLiveMatch, addActivity])
 
   const confirmEndInnings = useCallback(() => {
     setShowInningsBreak(false)
+    if (match.superOver?.active) {
+      confirmEndInningsSO()
+      return
+    }
     const newBatting = match.currentBatting === 'A' ? 'B' : 'A'
     updateLiveMatch({ currentBatting: newBatting, currentInnings: (match.currentInnings || 1) + 1, currentBatsman: null, currentBowler: null })
     addActivity('system', `Innings break! ${newBatting === 'A' ? match.teamA : match.teamB} to bat`)
-  }, [match, updateLiveMatch, addActivity])
+  }, [match, updateLiveMatch, addActivity, confirmEndInningsSO])
+
+  const startSuperOver = useCallback(() => {
+    setShowSuperOverDialog(false)
+    setShowEndDialog(false)
+    setShowTargetDialog(false)
+    // Reset for super over: both teams get 6 balls (1 over)
+    const maxSOBalls = currentRules.maxBalls || 6
+    const newInnings = (match.currentInnings || 1) + 1
+    // Team that batted second now bowls first in super over
+    // Track super over runs separately on the match
+    updateLiveMatch({
+      currentInnings: newInnings,
+      currentBatting: 'B',  // Team B bats first in super over
+      currentBatsman: null,
+      currentBowler: null,
+      scoreA: match.scoreA || 0,
+      scoreB: match.scoreB || 0,
+      ballsA: 0,
+      ballsB: 0,
+      wicketsA: 0,
+      wicketsB: 0,
+      extrasA: 0,
+      extrasB: 0,
+      boundariesA: 0,
+      boundariesB: 0,
+      superOver: {
+        active: true,
+        maxBalls: maxSOBalls,
+        innings: newInnings,
+        scores: [],
+      },
+      // Swap which team bats so B bats first in super over
+      battingStatsA: match.battingStatsA,
+      battingStatsB: match.battingStatsB,
+    })
+    addActivity('system', 'Super Over! Each team gets 1 over')
+  }, [match, updateLiveMatch, addActivity, currentRules.maxBalls])
 
   const handleEndMatch = useCallback(() => {
     const winner = isChasing
       ? (currentScore > opponentScore ? (isBattingA ? match.teamA : match.teamB) : currentScore < opponentScore ? (isBattingA ? match.teamB : match.teamA) : null)
       : (currentScore > opponentScore ? (isBattingA ? match.teamA : match.teamB) : currentScore < opponentScore ? (isBattingA ? match.teamB : match.teamA) : null)
+
+    // If tied and not already a super over, offer super over
+    if (!winner && !isSuperOver && !match.superOver?.active) {
+      setShowSuperOverDialog(true)
+      setShowEndDialog(false)
+      setShowTargetDialog(false)
+      return
+    }
 
     // Compute MOTM
     const allBattingStats = [...(match.battingStatsA || []), ...(match.battingStatsB || [])]
@@ -340,7 +460,7 @@ export default function LiveMatchScreen({ onNavigate, collabMatchId }) {
     setShowEndDialog(false)
     setShowTargetDialog(false)
     onNavigate('summary')
-  }, [match, currentScore, isChasing, opponentScore, isBattingA, endMatchWithWinner, updateMatchMOTM,
+  }, [match, currentScore, isChasing, isSuperOver, opponentScore, isBattingA, endMatchWithWinner, updateMatchMOTM,
       activeGroup, recordMatchForGroup, onNavigate])
 
   const handleContinueAfterTarget = useCallback(() => {
@@ -451,6 +571,26 @@ export default function LiveMatchScreen({ onNavigate, collabMatchId }) {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-pitch-dark via-[#0b0b20] to-blue-950 pb-2 flex flex-col max-w-lg mx-auto relative">
+
+      {/* ====== Super Over Dialog ====== */}
+      {showSuperOverDialog && (
+        <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-6 animate-fade-up">
+          <div className="card-glass p-8 text-center max-w-sm w-full border border-orange-500/40">
+            <div className="text-7xl mb-3 animate-bounce">🔥</div>
+            <h2 className="text-2xl font-black mb-2 text-gradient">Super Over!</h2>
+            <p className="text-lg font-bold mb-1">Match is tied!</p>
+            <p className="text-sm text-gray-400 mb-6">Each team gets 1 over. Highest scorer wins!</p>
+            <div className="flex gap-3">
+              <button onClick={() => { setShowSuperOverDialog(false); setShowEndDialog(true) }}
+                className="flex-1 py-4 rounded-2xl font-bold border-2 border-white/20 text-white active:scale-[0.97] transition-all">Draw</button>
+              <button onClick={startSuperOver}
+                className="flex-1 py-4 rounded-2xl font-bold bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-lg shadow-orange-500/30 active:scale-[0.97] transition-all">
+                🔥 Super Over →
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ====== Batsman Picker Modal ====== */}
       {showBatsmanPicker && (
@@ -626,13 +766,22 @@ export default function LiveMatchScreen({ onNavigate, collabMatchId }) {
       {showInningsBreak && (
         <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-6 animate-fade-up">
           <div className="card-glass p-8 text-center max-w-sm w-full border border-neon-green/30">
-            <div className="text-6xl mb-3 animate-bounce">🔄</div>
-            <h2 className="text-2xl font-black mb-1 text-gradient">Innings Break!</h2>
-            <p className="text-3xl font-black text-white mb-1">{match.teamA}: {match.scoreA}/{match.wicketsA}</p>
-            <p className="text-gray-400 mb-6">{match.teamB} needs {match.scoreA} to win</p>
+            <div className="text-6xl mb-3 animate-bounce">{match.superOver?.active ? '🔥' : '🔄'}</div>
+            <h2 className="text-2xl font-black mb-1 text-gradient">{match.superOver?.active ? 'Super Over — Switch!' : 'Innings Break!'}</h2>
+            {match.superOver?.active ? (
+              <>
+                <p className="text-lg font-bold text-white mb-1">{match.currentBatting === 'B' ? match.teamB : match.teamA}: {currentScore}/{currentWickets}</p>
+                <p className="text-gray-400 mb-6">Now {match.currentBatting === 'B' ? match.teamA : match.teamB} to bat!</p>
+              </>
+            ) : (
+              <>
+                <p className="text-3xl font-black text-white mb-1">{match.teamA}: {match.scoreA}/{match.wicketsA}</p>
+                <p className="text-gray-400 mb-6">{match.teamB} needs {match.scoreA} to win</p>
+              </>
+            )}
             <button onClick={confirmEndInnings}
               className="w-full py-5 rounded-2xl font-bold text-lg bg-gradient-to-r from-neon-green to-emerald-500 text-black shadow-lg shadow-neon-green/30 active:scale-[0.97] transition-all">
-              🔥 Start 2nd Innings →
+              {match.superOver?.active ? '🔥 Start Super Over Bat →' : '🔥 Start 2nd Innings →'}
             </button>
           </div>
         </div>
@@ -665,15 +814,21 @@ export default function LiveMatchScreen({ onNavigate, collabMatchId }) {
       {showEndDialog && (
         <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-6 animate-fade-up">
           <div className="card-glass p-8 text-center max-w-sm w-full">
-            <div className="text-6xl mb-3">🏆</div>
-            <h2 className="text-2xl font-black mb-3">End Match?</h2>
+            <div className="text-6xl mb-3">{match.superOver?.active ? '🔥' : '🏆'}</div>
+            <h2 className="text-2xl font-black mb-3">{match.superOver?.active ? 'Super Over Done!' : 'End Match?'}</h2>
             <p className="text-lg font-bold mb-1">{match.teamA}: {match.scoreA}/{match.wicketsA}</p>
             <p className="text-lg font-bold mb-5">{match.teamB}: {match.scoreB}/{match.wicketsB}</p>
+            {match.winner && <p className="text-sm text-neon-green font-bold mb-3">🏆 {match.winner} wins!</p>}
+            {!match.winner && match.superOver?.active && <p className="text-sm text-orange-400 font-bold mb-3">Still tied!</p>}
             <div className="flex gap-3">
               <button onClick={() => setShowEndDialog(false)}
-                className="flex-1 py-4 rounded-2xl font-bold border-2 border-white/20 text-white active:scale-[0.97] transition-all">Cancel</button>
+                className="flex-1 py-4 rounded-2xl font-bold border-2 border-white/20 text-white active:scale-[0.97] transition-all">
+                {match.superOver?.active ? 'Close' : 'Cancel'}
+              </button>
               <button onClick={handleEndMatch}
-                className="flex-1 py-4 rounded-2xl font-bold bg-gradient-to-r from-orange-500 to-red-500 text-white active:scale-[0.97] transition-all">End Match</button>
+                className="flex-1 py-4 rounded-2xl font-bold bg-gradient-to-r from-orange-500 to-red-500 text-white active:scale-[0.97] transition-all">
+                {match.winner || match.superOver?.active ? 'Finish Match' : 'End Match'}
+              </button>
             </div>
           </div>
         </div>
@@ -684,7 +839,7 @@ export default function LiveMatchScreen({ onNavigate, collabMatchId }) {
         <button onClick={() => onNavigate('home')} className="text-xl hover:scale-110 transition-transform">←</button>
         <div className="text-center flex-1">
           <p className="text-[10px] text-gray-500 uppercase tracking-wider font-bold">
-            {match.currentInnings > 1 ? '2nd Innings' : '1st Innings'} • {match.ground}
+            {match.currentInnings >= 3 ? '🔥 Super Over' : match.currentInnings > 1 ? '2nd Innings' : '1st Innings'} • {match.ground}
           </p>
           {isChasing && !targetCompleted && (
             <p className="text-[10px] text-orange-400 font-bold">

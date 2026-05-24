@@ -906,6 +906,29 @@ export default function CreateMatchScreen({ onNavigate, rematchData }) {
           </button>
           {showRules && (
             <div className="mt-3 space-y-2 animate-fade-up">
+              {/* Total Overs */}
+              <div className="pt-1 pb-2 border-b border-white/10">
+                <p className="text-xs font-medium mb-2">📊 Overs per Innings</p>
+                <div className="flex gap-1.5 flex-wrap">
+                  {[0, 1, 5, 10, 20, 50].map(n => (
+                    <button key={n} onClick={() => setLocalRules(prev => ({ ...(prev || {}), totalOvers: n }))}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${(localRules?.totalOvers ?? 0) === n ? 'bg-neon-green text-black' : 'bg-white/10 text-white'}`}>
+                      {n === 0 ? 'Unlimited' : `${n}`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {/* Single Batsman Toggle */}
+              <div className="flex items-center justify-between py-2 border-b border-white/5">
+                <div className="flex-1 pr-3">
+                  <p className="text-xs font-medium">🏏 Single Batsman</p>
+                  <p className="text-[10px] text-gray-500">Only striker bats (no non-striker). Turn off for paired running.</p>
+                </div>
+                <button onClick={() => setLocalRules(prev => ({ ...(prev || {}), singleBatsman: !(prev?.singleBatsman ?? true) }))}
+                  className={`w-12 h-7 rounded-full transition-all shrink-0 ${(localRules?.singleBatsman ?? true) ? 'bg-neon-green' : 'bg-white/20'}`}>
+                  <div className={`w-5 h-5 rounded-full bg-white shadow-lg transition-transform ${(localRules?.singleBatsman ?? true) ? 'translate-x-6' : 'translate-x-0.5'}`} />
+                </button>
+              </div>
               {[
                 { key: 'lastManStanding', label: '🏃 Last Man Standing', desc: 'Last player bats alone — innings ends only when all out' },
                 { key: 'directSixOut', label: '🚀 Direct Six = Out', desc: 'Hit a six and you\'re out' },

@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
-import { getSupabase } from '../lib/supabase'
+import { getSupabase, STORAGE_KEYS } from '../lib/supabase'
+import { storage } from '../utils/storage'
 
 const STAT_CATEGORIES = {
   batting: [
@@ -39,27 +40,47 @@ export default function PublicLeaderboard({ shareCode, onBack }) {
   useEffect(() => {
     if (!shareCode) { setError('No share code provided'); setLoading(false); return }
     const load = async () => {
+      // Try Supabase first
       const sb = getSupabase()
-      if (!sb) { setError('Database not configured'); setLoading(false); return }
-      try {
-        const { data, error } = await sb
-          .from('groups')
-          .select('name, share_code, snapshot')
-          .eq('share_code', shareCode.toUpperCase())
-          .maybeSingle()
-        if (error) throw error
-        if (!data) { setError('Group not found'); setLoading(false); return }
-        const snapshot = data.snapshot || {}
-        setGroup({
-          name: data.name,
-          shareCode: data.share_code,
-          players: snapshot.players || [],
-          matches: snapshot.matches || [],
-        })
-      } catch (e) {
-        console.warn('Public leaderboard load error:', e)
-        setError('Failed to load leaderboard. Try again later.')
+      if (sb) {
+        try {
+          const { data, error } = await sb
+            .from('groups')
+            .select('name, share_code, snapshot')
+            .eq('share_code', shareCode.toUpperCase())
+            .maybeSingle()
+          if (error) throw error
+          if (data) {
+            const snapshot = data.snapshot || {}
+            setGroup({
+              name: data.name,
+              shareCode: data.share_code,
+              players: snapshot.players || [],
+              matches: snapshot.matches || [],
+            })
+            setLoading(false)
+            return
+          }
+        } catch (e) {
+          console.warn('Public leaderboard load error:', e)
+        }
       }
+      // Fallback: try localStorage
+      try {
+        const groups = storage.get(STORAGE_KEYS.GROUPS) || []
+        const local = groups.find(g => g.shareCode?.toUpperCase() === shareCode.toUpperCase())
+        if (local) {
+          setGroup({
+            name: local.name,
+            shareCode: local.shareCode,
+            players: local.players || [],
+            matches: local.matches || [],
+          })
+          setLoading(false)
+          return
+        }
+      } catch (e) { console.warn('Local leaderboard fallback error:', e) }
+      setError('Group not found')
       setLoading(false)
     }
     load()
