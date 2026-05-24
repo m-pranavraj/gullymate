@@ -139,7 +139,7 @@ export async function parseVoiceCreateMatch(text, groupContext = null) {
   const groupInfo = groupContext ? `CRITICAL: Only use names from this group player list: ${JSON.stringify(groupContext)}. Do NOT invent new names. If a spoken name doesn't match, use the closest match from the list.` : ''
   const systemPrompt = `You are Gully AI, a voice parser for a gully cricket match creation app.
 Parse the user's speech and extract structured data. Return ONLY valid JSON with these fields:
-- teamA: string or null (set team name ONLY when saying "Team A is <TEAM NAME>" where <TEAM NAME> is a team-like phrase, NOT a person name)
+- teamA: string or null (set team name when user says "Team A is <NAME>" or "Team A name is <NAME>")
 - teamB: string or null (same rule for Team B)
 - ground: string or null
 - playersA: array of strings (player names for team A)
@@ -153,21 +153,19 @@ Parse the user's speech and extract structured data. Return ONLY valid JSON with
 CRITICAL rules:
 1. "add <NAME> to Team A" → action:"addToTeamA", playersA:["<NAME>"] (APPEND, do NOT set team name)
 2. "add <NAME> to Team B" → action:"addToTeamB", playersB:["<NAME>"] (APPEND, do NOT set team name)
-3. "Team A name is <NAME>" → if <NAME> is a short person name → action:"addToTeamA", playersA:["<NAME>"]; if <NAME> is a long team-like phrase → teamA:"<NAME>"
-4. "Team B name is <NAME>" → same logic for Team B
-5. "Team A is <TEAM NAME>" → teamA:"<TEAM NAME>" (set team name)
-6. "Team B is <TEAM NAME>" → teamB:"<TEAM NAME>" (set team name)
-7. "Team A players ARE X, Y, Z" → action:"setTeamA", playersA:[...] (REPLACE all existing players)
-8. "ADD X, Y, Z to Team A" → action:"addToTeamA", playersA:[...] (APPEND to existing players)
+3. "Team A name is <NAME>" or "Team A is <NAME>" → teamA:"<NAME>"  (ALWAYS set team name, NEVER treat as a player)
+4. "Team B name is <NAME>" or "Team B is <NAME>" → teamB:"<NAME>"  (ALWAYS set team name)
+5. "Team A players ARE X, Y, Z" → action:"setTeamA", playersA:[...] (REPLACE all existing players)
+6. "ADD X, Y, Z to Team A" → action:"addToTeamA", playersA:[...] (APPEND to existing players)
 
 Understand Hinglish, Telugu-English mix, and casual cricket talk.
 Examples:
-- "Team A is VK Boys and Team B is Titans" → {action:"setTeamA", teamA:"VK Boys", teamB:"Titans"}
-- "Team A name is VK Boys" → {teamA:"VK Boys"}  (sounds like a team name)
-- "Team A name is Santosh" → {action:"addToTeamA", playersA:["Santosh"]}   (Santosh is a person)
-- "Team B name is Rahul" → {action:"addToTeamB", playersB:["Rahul"]}
-- "Team A name is Weekend Warriors" → {teamA:"Weekend Warriors"}  (team-like phrase)
-- "Team A name is Sai" → {action:"addToTeamA", playersA:["Sai"]}  (person name)
+- "Team A is VK Boys and Team B is Titans" → {teamA:"VK Boys", teamB:"Titans"}
+- "Team A name is VK Boys" → {teamA:"VK Boys"}
+- "Team A name is Santosh" → {teamA:"Santosh"}
+- "Team B name is Rahul" → {teamB:"Rahul"}
+- "Team A name is Weekend Warriors" → {teamA:"Weekend Warriors"}
+- "Team A name is Pranav" → {teamA:"Pranav"}
 - "Team A players are Sai, Santosh, Rahul" → {action:"setTeamA", playersA:["Sai","Santosh","Rahul"]}
 - "Add Rahul to Team A" → {action:"addToTeamA", playersA:["Rahul"]}
 - "Add players Sai, Santosh to Team B" → {action:"addToTeamB", playersB:["Sai","Santosh"]}

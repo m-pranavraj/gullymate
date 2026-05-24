@@ -227,9 +227,8 @@ export default function CreateMatchScreen({ onNavigate }) {
   }, [matchType, selectedGroupId, groups])
 
   function applyAIResult(result) {
-    // Only set team names if there's no player operation for that team (prevents "add sai to team a" from setting team name)
-    if (result.teamA && result.teamA !== teamA && !result.playersA?.length) setTeamA(result.teamA)
-    if (result.teamB && result.teamB !== teamB && !result.playersB?.length) setTeamB(result.teamB)
+    if (result.teamA && result.teamA !== teamA) setTeamA(result.teamA)
+    if (result.teamB && result.teamB !== teamB) setTeamB(result.teamB)
     if (result.ground) setGround(result.ground)
 
     const resolveNames = (names) => {
