@@ -31,6 +31,9 @@ export default function LiveMatchScreen({ onNavigate, collabMatchId }) {
   const [aiTaunt, setAiTaunt] = useState('')
   const [pickMode, setPickMode] = useState(null)
   const [copied, setCopied] = useState(false)
+  const [showWicketDialog, setShowWicketDialog] = useState(false)
+  const [showFielderPicker, setShowFielderPicker] = useState(false)
+  const wicketPendingRef = useRef(null)
   const timelineRef = useRef(null)
   const recognitionRef = useRef(null)
   const scriptEndRef = useRef(false)
@@ -161,6 +164,11 @@ export default function LiveMatchScreen({ onNavigate, collabMatchId }) {
     let isLegal = true
 
     if (type === 'wicket') {
+      if (currentRules.trackWickets) {
+        wicketPendingRef.current = { ballEvent }
+        setShowWicketDialog(true)
+        return
+      }
       newWickets += 1
       commentaryLine = getRandomLine('wicket') || 'Wicket!'
       if (currentBatsman) {
@@ -469,6 +477,73 @@ export default function LiveMatchScreen({ onNavigate, collabMatchId }) {
     setTimeout(() => setCommentary(''), 1500)
   }, [])
 
+  const confirmWicket = useCallback((wicketType, fielder) => {
+    setShowWicketDialog(false)
+    setShowFielderPicker(false)
+    const pending = wicketPendingRef.current
+    wicketPendingRef.current = null
+    if (!pending) return
+
+    let newScore = currentScore, newWickets = currentWickets, newBalls = currentBalls
+    let newExtras = match[extrasKey] || 0, newBoundaries = match[boundariesKey] || 0
+    let newStats = [...battingPlayers]
+    const commentaryLine = wicketType === 'caught' ? `Caught${fielder ? ` by ${fielder}` : ''}!`
+      : wicketType === 'bowled' ? 'Bowled!'
+      : wicketType === 'stumped' ? 'Stumped!'
+      : wicketType === 'runOut' ? 'Run Out!'
+      : wicketType === 'lbw' ? 'LBW!'
+      : wicketType === 'hitWicket' ? 'Hit Wicket!'
+      : wicketType === 'retired' ? 'Retired Hurt!'
+      : 'Wicket!'
+
+    newWickets += 1
+    if (currentBatsman) {
+      newStats = newStats.map(s =>
+        s.name === currentBatsman ? { ...s, out: true, balls: (s.balls || 0) + 1, status: 'out' } : s
+      )
+    }
+    if (navigator.vibrate) navigator.vibrate(100)
+
+    const ballEvent = { ...pending.ballEvent, wicketType, fielder }
+    const newHistory = [...ballHistory, {
+      type: 'wicket', runs: 0, label: 'W',
+      wicketType, fielder,
+      bowler: currentBowler, batsman: currentBatsman,
+      innings: match.currentInnings || 1,
+    }]
+
+    updateLiveMatch({
+      [scoreKey]: newScore, [wicketKey]: newWickets, [ballKey]: newBalls + 1,
+      [extrasKey]: newExtras, [boundariesKey]: newBoundaries, [battingStatsKey]: newStats,
+      timeline: [...(match.timeline || []), ballEvent], ballHistory: newHistory,
+    })
+    setCommentary(commentaryLine)
+    addActivity(user?.name || 'Player', `wicket (${wicketType}${fielder ? ` c. ${fielder}` : ''})`)
+    setTimeout(() => setCommentary(''), 2500)
+
+    if (newWickets >= maxWickets) {
+      setTimeout(() => { setCommentary('All out!'); handleEndInnings() }, 500)
+    } else {
+      setTimeout(() => { setPickMode('batsman'); setShowBatsmanPicker(true) }, 300)
+    }
+  }, [match, currentBatsman, currentScore, currentWickets, currentBalls, battingPlayers, ballHistory,
+      scoreKey, wicketKey, ballKey, extrasKey, boundariesKey, battingStatsKey, maxWickets,
+      user, updateLiveMatch, addActivity, handleEndInnings, currentBowler])
+
+  const selectWicketType = useCallback((wicketType) => {
+    if (wicketType === 'caught') {
+      setShowWicketDialog(false)
+      setShowFielderPicker(true)
+    } else {
+      confirmWicket(wicketType, null)
+    }
+  }, [confirmWicket])
+
+  const selectFielder = useCallback((fielder) => {
+    setShowFielderPicker(false)
+    confirmWicket('caught', fielder)
+  }, [confirmWicket])
+
   // Voice commands
   const silenceTimerRef = useRef(null)
   const toggleVoice = () => {
@@ -588,6 +663,65 @@ export default function LiveMatchScreen({ onNavigate, collabMatchId }) {
                 🔥 Super Over →
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ====== Wicket Type Picker ====== */}
+      {showWicketDialog && (
+        <div className="fixed inset-0 z-50 bg-black/90 flex items-end sm:items-center p-4 animate-slide-up">
+          <div className="card-glass p-5 w-full max-w-sm mx-auto">
+            <h2 className="font-bold text-base mb-1 flex items-center gap-2">
+              <span className="text-yellow-400">🪀</span> Wicket Type
+            </h2>
+            <p className="text-[10px] text-gray-500 mb-4">How was the batsman dismissed?</p>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { type: 'bowled', label: '🪃 Bowled' },
+                { type: 'caught', label: '🧤 Caught' },
+                { type: 'runOut', label: '🏃 Run Out' },
+                { type: 'stumped', label: '🔨 Stumped' },
+                { type: 'lbw', label: '🦵 LBW' },
+                { type: 'hitWicket', label: '🏏 Hit Wicket' },
+                { type: 'retired', label: '🩹 Retired Hurt' },
+              ].map(o => (
+                <button key={o.type} onClick={() => selectWicketType(o.type)}
+                  className="py-4 rounded-2xl font-bold text-sm bg-white/5 border border-white/10 text-white hover:bg-white/10 active:scale-[0.97] transition-all text-center">
+                  {o.label}
+                </button>
+              ))}
+            </div>
+            <button onClick={() => { setShowWicketDialog(false); wicketPendingRef.current = null }}
+              className="w-full mt-3 py-3 rounded-2xl font-bold text-sm text-gray-400 border border-white/10 active:scale-[0.97] transition-all">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ====== Fielder Picker ====== */}
+      {showFielderPicker && (
+        <div className="fixed inset-0 z-50 bg-black/90 flex items-end sm:items-center p-4 animate-slide-up">
+          <div className="card-glass p-5 w-full max-w-sm mx-auto max-h-[70vh] overflow-y-auto">
+            <h2 className="font-bold text-base mb-1 flex items-center gap-2">
+              <span className="text-neon-green">🧤</span> Who Caught It?
+            </h2>
+            <p className="text-[10px] text-gray-500 mb-4">Select the fielder</p>
+            <div className="space-y-1">
+              {bowlersList.map((p, i) => (
+                <button key={i} onClick={() => selectFielder(p.name)}
+                  className="w-full text-left px-4 py-3.5 rounded-xl bg-white/5 border border-white/10 text-sm font-medium hover:bg-white/10 active:scale-[0.97] transition-all flex items-center gap-3">
+                  <span className="w-8 h-8 rounded-full bg-gradient-to-br from-neon-green to-neon-blue flex items-center justify-center text-xs font-bold shrink-0">
+                    {p.name[0]?.toUpperCase() || '?'}
+                  </span>
+                  <span>{p.name}</span>
+                </button>
+              ))}
+            </div>
+            <button onClick={() => { setShowFielderPicker(false); confirmWicket('caught', null) }}
+              className="w-full mt-3 py-3 rounded-2xl font-bold text-sm bg-white/5 text-gray-400 border border-white/10 active:scale-[0.97] transition-all">
+              Unknown fielder
+            </button>
           </div>
         </div>
       )}

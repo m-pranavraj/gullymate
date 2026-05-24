@@ -1,7 +1,6 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { useMatch } from '../context/MatchContext'
 import { useGroups } from '../context/GroupContext'
-import { getRandomNickname } from '../utils/commentary'
 import { generateShareCode } from '../utils/matchUtils'
 import { parseVoiceCreateMatch, generateAIPlayerNames, correctTranscript } from '../utils/groq'
 
@@ -22,7 +21,6 @@ export default function CreateMatchScreen({ onNavigate, rematchData }) {
   const [tossWinner, setTossWinner] = useState(null)
   const [tossChoice, setTossChoice] = useState('bat')
   const [tossAnimating, setTossAnimating] = useState(false)
-  const [nickname] = useState(getRandomNickname)
   const [error, setError] = useState('')
   const [voiceMode, setVoiceMode] = useState(false)
   const [isListening, setIsListening] = useState(false)
@@ -421,7 +419,6 @@ export default function CreateMatchScreen({ onNavigate, rematchData }) {
         <button onClick={() => onNavigate('home')} className="text-2xl hover:scale-110 transition-transform">←</button>
         <div className="flex-1">
           <h1 className="text-lg font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">Create Match</h1>
-          <p className="text-[10px] text-gray-500 tracking-wider uppercase">{nickname}</p>
         </div>
         <button
           onClick={() => setVoiceMode(!voiceMode)}
@@ -936,6 +933,7 @@ export default function CreateMatchScreen({ onNavigate, rematchData }) {
                 { key: 'noBallTwoRuns', label: '⛔ No Ball = 2 Runs', desc: 'No ball gives 2 runs instead of 1' },
                 { key: 'twoBounceRetire', label: '🔄 Two Bounce Retire', desc: 'Retire after 2 bounce catches' },
                 { key: 'rebattingAllowed', label: '🔄 Re-batting', desc: 'Batsmen can bat again after dismissal' },
+                { key: 'trackWickets', label: '🎯 Track Wicket Types', desc: 'Ask bowled/caught/run out etc. on each wicket' },
               ].map(rule => (
                 <div key={rule.key} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
                   <div className="flex-1 pr-3">

@@ -21,7 +21,7 @@ function AppContent() {
   const { theme, toggleTheme } = useTheme()
 
   const parseHash = () => {
-    const hash = window.location.hash.slice(1)
+    const hash = window.location.hash.slice(1).replace(/^\//, '')
     if (hash.startsWith('leaderboard/')) {
       return { screen: 'publicLeaderboard', params: { shareCode: hash.split('/')[1] } }
     }
@@ -65,11 +65,12 @@ function AppContent() {
   const initialLiveCheckDone = useRef(false)
   useEffect(() => {
     if (initialLiveCheckDone.current) return
+    if (screen === 'publicLeaderboard' || screen === 'live') { initialLiveCheckDone.current = true; return }
     if (liveMatch) {
       initialLiveCheckDone.current = true
       setScreen('live')
     }
-  }, [liveMatch])
+  }, [liveMatch, screen])
 
   const navigate = (s, ...args) => {
     setScreen(s)

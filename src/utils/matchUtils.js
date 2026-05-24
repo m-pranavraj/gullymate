@@ -107,4 +107,5 @@ export const defaultRules = {
   noBallTwoRuns: false,
   totalOvers: 0,
   singleBatsman: true,
+  trackWickets: false,
 }
