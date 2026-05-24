@@ -76,36 +76,25 @@ export default function CreateMatchScreen({ onNavigate, rematchData }) {
 
     resetSilenceTimer()
 
-    let bestTranscript = ''
-
     recognition.onresult = async (event) => {
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const result = event.results[i]
-        if (result.isFinal) {
-          let topChoice = result[0].transcript
-          for (let j = 1; j < result.length; j++) {
-            if (result[j].confidence > result[0].confidence) {
-              topChoice = result[j].transcript
-            }
-          }
-          bestTranscript = bestTranscript ? bestTranscript + ' ' + topChoice : topChoice
-        }
-      }
-      setVoiceTranscript(bestTranscript)
       resetSilenceTimer()
 
-      // Process immediately with latest utterance (fast, no AI)
-      if (event.results[event.results.length - 1]?.isFinal) {
-        const last = event.results[event.results.length - 1]
-        let text = last[0].transcript
-        for (let j = 1; j < last.length; j++) {
-          if (last[j].confidence > last[0].confidence) {
-            text = last[j].transcript
+      // Show latest utterance text (interim or final) for real-time display
+      const latestResult = event.results[event.results.length - 1]
+      if (latestResult) {
+        setVoiceTranscript(latestResult[0].transcript)
+      }
+
+      // Process final utterances immediately (fast, no AI)
+      if (latestResult?.isFinal) {
+        let text = latestResult[0].transcript
+        for (let j = 1; j < latestResult.length; j++) {
+          if (latestResult[j].confidence > latestResult[0].confidence) {
+            text = latestResult[j].transcript
           }
         }
         if (!text.trim() || text.length < 3) return
         fallbackParsing(text)
-        bestTranscript = ''
       }
     }
 
@@ -119,16 +108,24 @@ export default function CreateMatchScreen({ onNavigate, rematchData }) {
 
   function fallbackParsing(text) {
     const lower = text.toLowerCase()
+
+    // Team reference detection — lenient: "team be" → Team B, "team a" → Team A
+    const teamWordMatch = lower.match(/\bteam\s+(\S+)/i)
+    const teamRef = teamWordMatch ? teamWordMatch[1].toLowerCase() : ''
+    const isTeamA = teamRef.startsWith('a') || (teamA && lower.includes(teamA.toLowerCase()))
+    const isTeamB = teamRef.startsWith('b') || (teamB && lower.includes(teamB.toLowerCase()))
+    const isSet = lower.includes('players are') || lower.includes('players:') || lower.includes('are')
+
     if (lower.includes('create match') || lower.includes('start match')) {
       handleStart()
       return
     }
     if (lower.includes('toss') || lower.includes('bat') || lower.includes('bowl')) {
-      if (lower.includes('team a') || lower.includes('team b') || lower.includes(teamA.toLowerCase())) {
+      if (isTeamA) {
         setTossWinner('A')
         if (lower.includes('bowl')) setTossChoice('bowl')
         else setTossChoice('bat')
-      } else if (lower.includes('team b') || lower.includes('team a') || lower.includes(teamB.toLowerCase())) {
+      } else if (isTeamB) {
         setTossWinner('B')
         if (lower.includes('bowl')) setTossChoice('bowl')
         else setTossChoice('bat')
@@ -142,30 +139,28 @@ export default function CreateMatchScreen({ onNavigate, rematchData }) {
       return
     }
 
-    // Handle "Team A name is X" or "Team B name is X" — set team name
-    const teamNameMatch = lower.match(/team\s*(a|b)\s+name\s+is\s+(.+)/)
-    if (teamNameMatch) {
-      const team = teamNameMatch[1].toUpperCase()
-      const name = teamNameMatch[2].trim()
+    // Handle "Team ? name is X" — set team name
+    if (teamRef && text.match(/name\s+is\s+(.+)/i)) {
+      const nameMatch = text.match(/name\s+is\s+(.+)/i)
+      const name = nameMatch[1].trim()
       if (name) {
-        if (team === 'A') setTeamA(name)
-        else setTeamB(name)
-        setAiResult({ action: `setTeam${team}`, details: `Team ${team} name set to "${name}"` })
+        if (isTeamA) setTeamA(name)
+        else if (isTeamB) setTeamB(name)
+        setAiResult({ action: `setTeam${isTeamA ? 'A' : 'B'}`, details: `Team name set to "${name}"` })
       }
       return
     }
 
-    // Handle "Team A is X" or "Team B is X" — set team name
-    const teamIsMatch = lower.match(/team\s*(a|b)\s+is\s+(.+)/)
-    if (teamIsMatch) {
-      const team = teamIsMatch[1].toUpperCase()
-      const name = teamIsMatch[2].trim()
-      if (name) {
-        if (team === 'A') setTeamA(name)
-        else setTeamB(name)
-        setAiResult({ action: `setTeam${team}`, details: `Team ${team} name set to "${name}"` })
+    // Handle "Team ? is X" — set team name (only when not setting players)
+    if (teamRef && !isSet && !lower.includes('players') && text.match(/\bis\s+(.+)/i) && !lower.includes('bat') && !lower.includes('bowl')) {
+      const isMatch = text.match(/\bis\s+(.+)/i)
+      const name = isMatch[1].trim()
+      if (name && !name.toLowerCase().includes('players') && !name.toLowerCase().includes('are')) {
+        if (isTeamA) setTeamA(name)
+        else if (isTeamB) setTeamB(name)
+        setAiResult({ action: `setTeam${isTeamA ? 'A' : 'B'}`, details: `Team name set to "${name}"` })
+        return
       }
-      return
     }
 
     const resolveNames = (names) => {
@@ -181,22 +176,19 @@ export default function CreateMatchScreen({ onNavigate, rematchData }) {
     if (text.includes(',') || text.includes(';') || text.includes('और') || lower.includes(' and ')) {
       rawNames = text.split(/[,;और,and]+/)
     } else if (isSet) {
-      let cleaned = text.replace(/^(team\s*(a|b)\s*players?\s*(are|is)?\s*)/i, '')
-        .replace(/^(team\s*(a|b)\s+is\s+)/i, '')
-        .replace(/^(players?\s*(are|is)?\s*)/i, '')
+      // Strip known prefixes — \S{1,5} matches "be", "the", "a", "b", etc after "team"
+      let cleaned = text.replace(/^(team\s+\S{1,5}\s+players?\s+(are|is)\s*)/i, '')
+        .replace(/^(team\s+\S{1,5}\s+(are|is)\s*)/i, '')
+        .replace(/^(players?\s+(are|is)\s*)/i, '')
         .replace(/^(add\s+)/i, '')
         .trim()
       rawNames = cleaned.split(/\s+/)
     } else {
-      rawNames = text.split(/[,;और,and]+/)
+      rawNames = text.replace(/^add\s+/i, '').split(/[,;और,and]+/)
     }
     rawNames = rawNames.map(n => n.trim()).filter(n => n.length > 1 && n.length < 30)
     if (rawNames.length === 0) return
     const names = resolveNames(rawNames)
-
-    const isSet = lower.includes('players are') || lower.includes('team a is') || lower.includes('team b is') || lower.includes('are')
-    const isTeamA = lower.includes('team a') || (teamA && lower.includes(teamA.toLowerCase()))
-    const isTeamB = lower.includes('team b') || (teamB && lower.includes(teamB.toLowerCase()))
 
     if ((isTeamA || !isTeamB) && isSet) {
       setPlayersA(makePlayers(names))
