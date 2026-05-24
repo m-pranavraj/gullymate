@@ -54,7 +54,7 @@ function AppContent() {
     if (screen === 'publicLeaderboard') return
     if (user) setScreen('home')
     else setScreen('login')
-  }, [user, screen])
+  }, [user])
 
   const navigate = (s, ...args) => {
     setScreen(s)
