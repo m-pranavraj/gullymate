@@ -40,30 +40,65 @@ export function GroupProvider({ children }) {
 
     const runMigration = async () => {
       try {
-        // Try calling the migration function (exists if migration SQL was run)
         await sb.rpc('gully_migrate_v1')
         setNeedsMigration(false)
-        return
       } catch (_) {
-        // Function doesn't exist yet — try direct ALTER TABLE via raw SQL
-        // Fallback: try a simple test query to check if share_code column exists
         try {
           await sb.from('groups').select('share_code').limit(1)
           setNeedsMigration(false)
-          return
         } catch (err) {
           if (err?.message?.includes('share_code') && err?.message?.includes('column')) {
             setNeedsMigration(true)
-            console.warn(
-              'Supabase schema needs migration. Run migration.sql in your Supabase SQL Editor:\n' +
-              'https://supabase.com/dashboard/project/bujzrxyqybyhbvtutvcs/sql/new'
-            )
+            console.warn('Supabase schema needs migration.')
           }
         }
       }
     }
     runMigration()
   }, [])
+
+  // Backfill: after schema is confirmed OK, re-sync all local groups to populate
+  // share_code on existing Supabase rows that were synced before the column existed.
+  const backfillShareCodes = useCallback(async () => {
+    const sb = getSupabase()
+    if (!sb || !user?.id || user?.isGuest) return
+    for (const g of groups) {
+      if (!g.shareCode) continue
+      try {
+        await sb.from('groups').update({ share_code: g.shareCode }).eq('id', g.id)
+      } catch (_) {}
+    }
+  }, [groups, user?.id, user?.isGuest])
+
+  // Also backfill any local groups whose entire row never made it to Supabase
+  // (e.g. because previous syncGroupToSupabase failed on a missing column)
+  const backfillMissingGroups = useCallback(async () => {
+    const sb = getSupabase()
+    if (!sb || !user?.id || user?.isGuest) return
+    for (const g of groups) {
+      try {
+        // Try a minimal upsert that only sets core columns + share_code
+        // (skip snapshot so even partial schema doesn't block it)
+        const { data } = await sb.from('groups').upsert({
+          id: g.id,
+          owner_id: user.id,
+          name: g.name,
+          share_code: g.shareCode || null,
+          created_at: new Date(g.createdAt).toISOString(),
+        }).select('id').maybeSingle()
+        if (!data) continue
+        // Sync players separately
+        for (const p of g.players) {
+          await sb.from('group_players').upsert({
+            group_id: g.id,
+            name: p.name,
+            user_id: p.userId || null,
+            claimed: p.claimed || false,
+          }, { onConflict: 'group_id, name' }).maybeSingle()
+        }
+      } catch (_) {}
+    }
+  }, [groups, user?.id, user?.isGuest])
 
   // Sync from Supabase on mount for logged-in users
   useEffect(() => {
@@ -117,7 +152,10 @@ export function GroupProvider({ children }) {
         console.warn('Supabase group sync failed, using local:', e)
       }
     }
-    loadGroups()
+    loadGroups().then(() => {
+      backfillShareCodes()
+      backfillMissingGroups()
+    })
   }, [user?.id, user?.isGuest])
 
   const syncGroupToSupabase = useCallback(async (group) => {
