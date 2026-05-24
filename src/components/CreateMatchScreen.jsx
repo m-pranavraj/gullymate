@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { useMatch } from '../context/MatchContext'
 import { useGroups } from '../context/GroupContext'
 import { generateShareCode } from '../utils/matchUtils'
-import { parseVoiceCreateMatch, generateAIPlayerNames, correctTranscript } from '../utils/groq'
+import { parseVoiceCreateMatch, generateAIPlayerNames } from '../utils/groq'
 
 const COLORS = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9']
 const PLAYER_SUGGESTIONS_A = ['Virat', 'Rohit', 'Dhoni', 'Sachin', 'Bumrah', 'Jadeja', 'Shami', 'Kohli', 'Pant', 'Hardik']
@@ -102,12 +102,6 @@ export default function CreateMatchScreen({ onNavigate, rematchData }) {
           const groupCtx = matchType === 'group' && selectedGroupId
             ? groups.find(g => g.id === selectedGroupId)?.players.map(p => p.name) || null
             : null
-          // Correct transcript before parsing
-          const corrected = await correctTranscript(text, { groupPlayers: groupCtx })
-          if (corrected && corrected !== text) {
-            setVoiceTranscript(corrected)
-            text = corrected
-          }
           const result = await parseVoiceCreateMatch(text, groupCtx)
           if (result) {
             setAiResult(result)
@@ -184,7 +178,6 @@ export default function CreateMatchScreen({ onNavigate, rematchData }) {
 
     const resolveNames = (names) => {
       if (!groupPlayers) return names
-      // Only keep names that actually match a group player (don't create new names)
       return names.map(n => matchGroupPlayer(n, groupPlayers)).filter(n =>
         groupPlayers.some(p => p.name.toLowerCase() === n.toLowerCase())
       )
@@ -192,7 +185,20 @@ export default function CreateMatchScreen({ onNavigate, rematchData }) {
     const makePlayers = (names) =>
       names.map((name, i) => ({ id: Date.now().toString() + Math.random(), name, color: COLORS[i % COLORS.length] }))
 
-    const rawNames = text.split(/[,;और,and]+/).map(n => n.trim()).filter(n => n.length > 0 && n.length < 30)
+    let rawNames
+    if (text.includes(',') || text.includes(';') || text.includes('और') || lower.includes(' and ')) {
+      rawNames = text.split(/[,;और,and]+/)
+    } else if (isSet) {
+      let cleaned = text.replace(/^(team\s*(a|b)\s*players?\s*(are|is)?\s*)/i, '')
+        .replace(/^(team\s*(a|b)\s+is\s+)/i, '')
+        .replace(/^(players?\s*(are|is)?\s*)/i, '')
+        .replace(/^(add\s+)/i, '')
+        .trim()
+      rawNames = cleaned.split(/\s+/)
+    } else {
+      rawNames = text.split(/[,;और,and]+/)
+    }
+    rawNames = rawNames.map(n => n.trim()).filter(n => n.length > 1 && n.length < 30)
     if (rawNames.length === 0) return
     const names = resolveNames(rawNames)
 

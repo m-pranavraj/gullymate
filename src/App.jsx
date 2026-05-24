@@ -55,10 +55,14 @@ function AppContent() {
   }, [])
 
   // Don't override when viewing a public leaderboard or live collab
+  // Only redirect from login/signup to home (don't interrupt other screens)
   useEffect(() => {
     if (screen === 'publicLeaderboard' || screen === 'live') return
-    if (user) setScreen('home')
-    else setScreen('login')
+    if (user) {
+      if (screen === 'login' || screen === 'signup') setScreen('home')
+    } else {
+      setScreen('login')
+    }
   }, [user])
 
   // Auto-navigate to live match when restored from Supabase on page load
