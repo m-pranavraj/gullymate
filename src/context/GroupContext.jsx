@@ -57,6 +57,19 @@ export function GroupProvider({ children }) {
     runMigration()
   }, [])
 
+  const ensureGroupShareCode = useCallback((groupId) => {
+    let code = null
+    setGroups(prev => prev.map(g => {
+      if (g.id !== groupId) return g
+      if (g.shareCode) { code = g.shareCode; return g }
+      code = generateShareCode()
+      const updated = { ...g, shareCode: code }
+      syncGroupToSupabase(updated)
+      return updated
+    }))
+    return code
+  }, [syncGroupToSupabase])
+
   // Backfill: after schema is OK and groups are populated, push all local groups
   // to Supabase so share_code exists in the DB for share-code lookups.
   const backfillRan = useRef(false)
@@ -66,13 +79,24 @@ export function GroupProvider({ children }) {
     if (backfillRan.current || groups.length === 0) return
     backfillRan.current = true
     ;(async () => {
-      for (const g of groups) {
+      // Ensure every group has a shareCode (backfill for groups created before shareCode feature existed)
+      let needsLocalUpdate = false
+      const groupsToSync = groups.map(g => {
+        if (!g.shareCode) {
+          needsLocalUpdate = true
+          return { ...g, shareCode: generateShareCode() }
+        }
+        return g
+      })
+      if (needsLocalUpdate) setGroups(groupsToSync)
+
+      for (const g of groupsToSync) {
         try {
           await sb.from('groups').upsert({
             id: g.id,
             owner_id: user.id,
             name: g.name,
-            share_code: g.shareCode || null,
+            share_code: g.shareCode,
             created_at: new Date(g.createdAt).toISOString(),
           }, { onConflict: 'id' })
           for (const p of g.players) {
@@ -449,6 +473,7 @@ export function GroupProvider({ children }) {
       recordMatchForGroup, addActivityToGroup,
       setActiveGroupById, resetGroupStats,
       claimPlayerInGroup, getGroupByShareCode, getGroupByShareCodePublic,
+      ensureGroupShareCode,
     }}>
       {children}
     </GroupContext.Provider>

@@ -31,7 +31,7 @@ const STAT_CATEGORIES = {
 }
 
 export default function GroupDashboard({ onNavigate }) {
-  const { groups, activeGroup, setActiveGroupById, addPlayerToGroup, removePlayerFromGroup, addBulkPlayersToGroup, resetGroupStats, claimPlayerInGroup } = useGroups()
+  const { groups, activeGroup, setActiveGroupById, addPlayerToGroup, removePlayerFromGroup, addBulkPlayersToGroup, resetGroupStats, claimPlayerInGroup, ensureGroupShareCode } = useGroups()
   const { user } = useAuth()
   const [activeStatTab, setActiveStatTab] = useState('batting')
   const [sortBy, setSortBy] = useState('runs')
@@ -184,9 +184,11 @@ export default function GroupDashboard({ onNavigate }) {
                   <option key={g.id} value={g.id}>{g.name}</option>
                 ))}
               </select>
-              {group.shareCode && (
-                <button onClick={() => {
-                  const url = `${window.location.origin}${window.location.pathname}#/leaderboard/${group.shareCode}`
+              <button onClick={() => {
+                  let code = group.shareCode
+                  if (!code) code = ensureGroupShareCode(group.id)
+                  if (!code) return
+                  const url = `${window.location.origin}${window.location.pathname}#/leaderboard/${code}`
                   navigator.clipboard.writeText(url)
                   setCopiedShare(true)
                   setTimeout(() => setCopiedShare(false), 2000)
@@ -195,7 +197,6 @@ export default function GroupDashboard({ onNavigate }) {
                   title="Copy public leaderboard link">
                   {copiedShare ? '✓' : '🔗'}
                 </button>
-              )}
             </div>
             <p className="text-[10px] text-gray-500 mt-0.5 flex items-center gap-2">
               <span>✦ {group.players.length} players</span>
