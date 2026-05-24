@@ -14,12 +14,20 @@ export function GroupProvider({ children }) {
     return saved?.id || null
   })
 
-  // Derive activeGroup live from groups array — always up to date
-  const activeGroup = useMemo(() => groups.find(g => g.id === activeGroupId) || null, [groups, activeGroupId])
+  const [sharedGroups, setSharedGroups] = useState(() => storage.get('gully_os_shared_groups') || [])
+
+  // Derive activeGroup from owned groups OR shared groups
+  const activeGroup = useMemo(() =>
+    groups.find(g => g.id === activeGroupId) ||
+    sharedGroups.find(g => g.id === activeGroupId) ||
+    null,
+    [groups, sharedGroups, activeGroupId]
+  )
 
   // Persist to localStorage
   useEffect(() => { storage.set(STORAGE_KEYS.GROUPS, groups) }, [groups])
   useEffect(() => { storage.set(STORAGE_KEYS.ACTIVE_GROUP, activeGroup ? { id: activeGroup.id } : null) }, [activeGroup])
+  useEffect(() => { storage.set('gully_os_shared_groups', sharedGroups) }, [sharedGroups])
 
   // Sync from Supabase on mount for logged-in users
   useEffect(() => {
@@ -256,7 +264,7 @@ export function GroupProvider({ children }) {
     }))
   }, [])
 
-  const getGroup = useCallback((id) => groups.find(g => g.id === id) || null, [groups])
+  const getGroup = useCallback((id) => groups.find(g => g.id === id) || sharedGroups.find(g => g.id === id) || null, [groups, sharedGroups])
 
   const setActiveGroupById = useCallback((id) => {
     setActiveGroupId(id)
@@ -294,9 +302,6 @@ export function GroupProvider({ children }) {
     }))
     addActivityToGroup(groupId, 'System', `Player "${playerName}" claimed by ${userName}`)
   }, [syncGroupToSupabase])
-
-  // Shared groups cache: groups loaded via share code (not owned by current user)
-  const [sharedGroups, setSharedGroups] = useState([])
 
   const getGroupByShareCode = useCallback(async (shareCode) => {
     if (!shareCode) return null

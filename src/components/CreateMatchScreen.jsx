@@ -135,11 +135,11 @@ export default function CreateMatchScreen({ onNavigate }) {
       return
     }
     if (lower.includes('toss') || lower.includes('bat') || lower.includes('bowl')) {
-      if (lower.includes('team a') || lower.includes('team a') || lower.includes(teamA.toLowerCase())) {
+      if (lower.includes('team a') || lower.includes('team b') || lower.includes(teamA.toLowerCase())) {
         setTossWinner('A')
         if (lower.includes('bowl')) setTossChoice('bowl')
         else setTossChoice('bat')
-      } else if (lower.includes('team b') || lower.includes('team b') || lower.includes(teamB.toLowerCase())) {
+      } else if (lower.includes('team b') || lower.includes('team a') || lower.includes(teamB.toLowerCase())) {
         setTossWinner('B')
         if (lower.includes('bowl')) setTossChoice('bowl')
         else setTossChoice('bat')
