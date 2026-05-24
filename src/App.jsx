@@ -13,15 +13,27 @@ import GullyRules from './components/GullyRules'
 import CollaborativeAccess from './components/CollaborativeAccess'
 import GroupScreen from './components/GroupScreen'
 import GroupDashboard from './components/GroupDashboard'
+import PublicLeaderboard from './components/PublicLeaderboard'
 
 function AppContent() {
   const { user } = useAuth()
   const { theme, toggleTheme } = useTheme()
   const [screen, setScreen] = useState(() => {
     const savedUser = localStorage.getItem('gully_os_current_user')
+    // Check for deep link hash on first load
+    const hash = window.location.hash.slice(1)
+    if (hash.startsWith('leaderboard/')) {
+      return 'publicLeaderboard'
+    }
     return savedUser ? 'home' : 'login'
   })
-  const [params, setParams] = useState({})
+  const [params, setParams] = useState(() => {
+    const hash = window.location.hash.slice(1)
+    if (hash.startsWith('leaderboard/')) {
+      return { shareCode: hash.split('/')[1] }
+    }
+    return {}
+  })
 
   useEffect(() => {
     if (user) setScreen('home')
@@ -47,6 +59,7 @@ function AppContent() {
     logout: <LogoutScreen onBack={() => navigate('login')} />,
     groups: <GroupScreen onNavigate={navigate} />,
     groupDashboard: <GroupDashboard onNavigate={navigate} />,
+    publicLeaderboard: <PublicLeaderboard shareCode={params.shareCode} onBack={() => navigate(user ? 'home' : 'login')} />,
   }
 
   return screens[screen] || screens.home

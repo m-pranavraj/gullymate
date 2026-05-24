@@ -3,7 +3,7 @@ import { useGroups } from '../context/GroupContext'
 import { useAuth } from '../context/AuthContext'
 
 export default function GroupScreen({ onNavigate }) {
-  const { groups, sharedGroups, createGroup, deleteGroup, setActiveGroupById, getGroupByShareCode } = useGroups()
+  const { groups, sharedGroups, needsMigration, createGroup, deleteGroup, setActiveGroupById, getGroupByShareCode } = useGroups()
   const { user } = useAuth()
   const [showCreate, setShowCreate] = useState(false)
   const [groupName, setGroupName] = useState('')
@@ -114,6 +114,23 @@ export default function GroupScreen({ onNavigate }) {
               </button>
             </div>
             {accessError && <p className="text-red-400 text-xs mt-2">{accessError}</p>}
+          </div>
+        )}
+
+        {/* Migration Needed Banner */}
+        {needsMigration && (
+          <div className="rounded-2xl p-4 border border-orange-500/20 animate-fade-up" style={{ background: 'rgba(255,165,0,0.08)' }}>
+            <h2 className="text-xs font-bold text-orange-300 mb-2 flex items-center gap-2">
+              <span className="w-1 h-4 rounded-full bg-gradient-to-b from-orange-400 to-red-400" />
+              Database Setup Required
+            </h2>
+            <p className="text-[10px] text-zinc-500 mb-3">
+              The database is missing required columns. Run the migration SQL in your Supabase SQL editor to enable share codes and public leaderboards.
+            </p>
+            <button onClick={() => navigator.clipboard.writeText('Run src/lib/migration.sql in Supabase SQL Editor')}
+              className="px-4 py-2 rounded-xl bg-orange-500/20 text-orange-300 text-[10px] font-medium border border-orange-500/30 active:scale-95 transition-all">
+              Copy migration info
+            </button>
           </div>
         )}
 

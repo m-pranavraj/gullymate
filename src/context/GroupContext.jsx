@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react'
+import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { storage } from '../utils/storage'
 import { getSupabase, isSupabaseConfigured, STORAGE_KEYS } from '../lib/supabase'
 import { useAuth } from './AuthContext'
@@ -15,6 +15,8 @@ export function GroupProvider({ children }) {
   })
 
   const [sharedGroups, setSharedGroups] = useState(() => storage.get('gully_os_shared_groups') || [])
+  const [needsMigration, setNeedsMigration] = useState(false)
+  const migrationAttempted = useRef(false)
 
   // Derive activeGroup from owned groups OR shared groups
   const activeGroup = useMemo(() =>
@@ -28,6 +30,40 @@ export function GroupProvider({ children }) {
   useEffect(() => { storage.set(STORAGE_KEYS.GROUPS, groups) }, [groups])
   useEffect(() => { storage.set(STORAGE_KEYS.ACTIVE_GROUP, activeGroup ? { id: activeGroup.id } : null) }, [activeGroup])
   useEffect(() => { storage.set('gully_os_shared_groups', sharedGroups) }, [sharedGroups])
+
+  // Schema auto-migration on startup: try to add missing columns
+  useEffect(() => {
+    if (migrationAttempted.current) return
+    migrationAttempted.current = true
+    const sb = getSupabase()
+    if (!sb) return
+
+    const runMigration = async () => {
+      try {
+        // Try calling the migration function (exists if migration SQL was run)
+        await sb.rpc('gully_migrate_v1')
+        setNeedsMigration(false)
+        return
+      } catch (_) {
+        // Function doesn't exist yet — try direct ALTER TABLE via raw SQL
+        // Fallback: try a simple test query to check if share_code column exists
+        try {
+          await sb.from('groups').select('share_code').limit(1)
+          setNeedsMigration(false)
+          return
+        } catch (err) {
+          if (err?.message?.includes('share_code') && err?.message?.includes('column')) {
+            setNeedsMigration(true)
+            console.warn(
+              'Supabase schema needs migration. Run migration.sql in your Supabase SQL Editor:\n' +
+              'https://supabase.com/dashboard/project/bujzrxyqybyhbvtutvcs/sql/new'
+            )
+          }
+        }
+      }
+    }
+    runMigration()
+  }, [])
 
   // Sync from Supabase on mount for logged-in users
   useEffect(() => {
@@ -43,7 +79,6 @@ export function GroupProvider({ children }) {
 
         if (error) throw error
         if (remoteGroups && remoteGroups.length > 0) {
-          // Transform to local format
           const local = remoteGroups.map(g => ({
             id: g.id,
             name: g.name,
@@ -62,7 +97,6 @@ export function GroupProvider({ children }) {
           }))
           setGroups(prev => {
             const merged = [...local]
-            // Merge local matches/activity into remote groups
             prev.forEach(lg => {
               const existing = merged.find(m => m.id === lg.id)
               if (existing) {
@@ -95,6 +129,10 @@ export function GroupProvider({ children }) {
         owner_id: user.id,
         name: group.name,
         share_code: group.shareCode || null,
+        snapshot: {
+          players: group.players,
+          matches: group.matches,
+        },
         created_at: new Date(group.createdAt).toISOString(),
       }).select().single()
       for (const p of group.players) {
@@ -305,10 +343,8 @@ export function GroupProvider({ children }) {
 
   const getGroupByShareCode = useCallback(async (shareCode) => {
     if (!shareCode) return null
-    // First check local groups (owned or already shared)
     const localMatch = [...groups, ...sharedGroups].find(g => g.shareCode === shareCode)
     if (localMatch) return localMatch
-    // Then try Supabase
     const sb = getSupabase()
     if (sb) {
       try {
@@ -319,21 +355,25 @@ export function GroupProvider({ children }) {
           .maybeSingle()
         if (error) throw error
         if (data) {
+          const snapshot = data.snapshot || {}
           const g = {
             id: data.id,
             name: data.name,
             shareCode: data.share_code,
             createdAt: new Date(data.created_at).getTime(),
             ownerId: data.owner_id,
-            players: (data.group_players || []).map(p => ({
-              name: p.name,
-              userId: p.user_id,
-              claimed: p.claimed,
-              claimedByName: null,
-              stats: { matches: 0, runs: 0, balls: 0, fours: 0, sixes: 0, wickets: 0, overs: 0, runsConceded: 0, catches: 0, stumpings: 0, fifties: 0, hundreds: 0, notOuts: 0, ducks: 0, highestScore: 0 },
-              history: [],
-            })),
-            matches: [],
+            players: (data.group_players || []).map(p => {
+              const snapPlayer = (snapshot.players || []).find(sp => sp.name === p.name)
+              return {
+                name: p.name,
+                userId: p.user_id,
+                claimed: p.claimed,
+                claimedByName: null,
+                stats: snapPlayer?.stats || { matches: 0, runs: 0, balls: 0, fours: 0, sixes: 0, wickets: 0, overs: 0, runsConceded: 0, catches: 0, stumpings: 0, fifties: 0, hundreds: 0, notOuts: 0, ducks: 0, highestScore: 0 },
+                history: snapPlayer?.history || [],
+              }
+            }),
+            matches: snapshot.matches || [],
             activityLog: [],
           }
           setSharedGroups(prev => {
@@ -349,14 +389,39 @@ export function GroupProvider({ children }) {
     return null
   }, [groups, sharedGroups])
 
+  const getGroupByShareCodePublic = useCallback(async (shareCode) => {
+    if (!shareCode) return null
+    const sb = getSupabase()
+    if (!sb) return null
+    try {
+      const { data, error } = await sb
+        .from('groups')
+        .select('name, share_code, snapshot')
+        .eq('share_code', shareCode.toUpperCase())
+        .maybeSingle()
+      if (error) throw error
+      if (!data) return null
+      const snapshot = data.snapshot || {}
+      return {
+        name: data.name,
+        shareCode: data.share_code,
+        players: snapshot.players || [],
+        matches: snapshot.matches || [],
+      }
+    } catch (e) {
+      console.warn('Public leaderboard lookup failed:', e)
+      return null
+    }
+  }, [])
+
   return (
     <GroupContext.Provider value={{
-      groups, activeGroup, sharedGroups,
+      groups, activeGroup, sharedGroups, needsMigration,
       createGroup, deleteGroup, getGroup,
       addPlayerToGroup, removePlayerFromGroup, addBulkPlayersToGroup,
       recordMatchForGroup, addActivityToGroup,
       setActiveGroupById, resetGroupStats,
-      claimPlayerInGroup, getGroupByShareCode,
+      claimPlayerInGroup, getGroupByShareCode, getGroupByShareCodePublic,
     }}>
       {children}
     </GroupContext.Provider>

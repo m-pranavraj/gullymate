@@ -39,6 +39,8 @@ CREATE TABLE IF NOT EXISTS public.groups (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   owner_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
+  share_code TEXT UNIQUE,
+  snapshot JSONB,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -47,6 +49,25 @@ ALTER TABLE public.groups ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Users can CRUD own groups"
   ON public.groups FOR ALL USING (auth.uid() = owner_id);
+
+-- Allow anyone to view a group by share code
+CREATE POLICY "Anyone can view groups by share code"
+  ON public.groups FOR SELECT USING (share_code IS NOT NULL);
+
+CREATE INDEX IF NOT EXISTS idx_groups_share_code ON public.groups(share_code);
+
+-- Auto-migration function: adds columns that may be missing from older schemas
+CREATE OR REPLACE FUNCTION public.gully_migrate_v1()
+RETURNS boolean
+LANGUAGE plpgsql SECURITY DEFINER
+AS $$
+BEGIN
+  ALTER TABLE public.groups ADD COLUMN IF NOT EXISTS share_code TEXT;
+  ALTER TABLE public.groups ADD COLUMN IF NOT EXISTS snapshot JSONB;
+  CREATE INDEX IF NOT EXISTS idx_groups_share_code ON public.groups(share_code);
+  RETURN true;
+END;
+$$;
 
 -- 3. Group Players (linked to accounts OR stored as plain name)
 CREATE TABLE IF NOT EXISTS public.group_players (

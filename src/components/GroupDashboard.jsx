@@ -185,9 +185,15 @@ export default function GroupDashboard({ onNavigate }) {
                 ))}
               </select>
               {group.shareCode && (
-                <button onClick={() => { navigator.clipboard.writeText(group.shareCode); setCopiedShare(true); setTimeout(() => setCopiedShare(false), 2000) }}
-                  className="text-[10px] text-zinc-500 hover:text-blue-400 transition-colors px-1.5 py-0.5 rounded bg-zinc-800/80 border border-zinc-700/50 shrink-0">
-                  {copiedShare ? '✓ Copied' : '🔗'}
+                <button onClick={() => {
+                  const url = `${window.location.origin}${window.location.pathname}#/leaderboard/${group.shareCode}`
+                  navigator.clipboard.writeText(url)
+                  setCopiedShare(true)
+                  setTimeout(() => setCopiedShare(false), 2000)
+                }}
+                  className="text-[10px] text-zinc-500 hover:text-blue-400 transition-colors px-1.5 py-0.5 rounded bg-zinc-800/80 border border-zinc-700/50 shrink-0"
+                  title="Copy public leaderboard link">
+                  {copiedShare ? '✓' : '🔗'}
                 </button>
               )}
             </div>
