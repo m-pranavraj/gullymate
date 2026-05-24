@@ -18,27 +18,43 @@ import PublicLeaderboard from './components/PublicLeaderboard'
 function AppContent() {
   const { user } = useAuth()
   const { theme, toggleTheme } = useTheme()
-  const [screen, setScreen] = useState(() => {
-    const savedUser = localStorage.getItem('gully_os_current_user')
-    // Check for deep link hash on first load
+
+  const parseHash = () => {
     const hash = window.location.hash.slice(1)
     if (hash.startsWith('leaderboard/')) {
-      return 'publicLeaderboard'
+      return { screen: 'publicLeaderboard', params: { shareCode: hash.split('/')[1] } }
     }
+    return null
+  }
+
+  const [screen, setScreen] = useState(() => {
+    const deep = parseHash()
+    if (deep) return deep.screen
+    const savedUser = localStorage.getItem('gully_os_current_user')
     return savedUser ? 'home' : 'login'
   })
   const [params, setParams] = useState(() => {
-    const hash = window.location.hash.slice(1)
-    if (hash.startsWith('leaderboard/')) {
-      return { shareCode: hash.split('/')[1] }
-    }
+    const deep = parseHash()
+    if (deep) return deep.params
     return {}
   })
 
+  // Listen for hash changes (e.g. pasting a leaderboard URL while app is open)
   useEffect(() => {
+    const onHashChange = () => {
+      const deep = parseHash()
+      if (deep) { setScreen(deep.screen); setParams(deep.params) }
+    }
+    window.addEventListener('hashchange', onHashChange)
+    return () => window.removeEventListener('hashchange', onHashChange)
+  }, [])
+
+  // Don't override when viewing a public leaderboard
+  useEffect(() => {
+    if (screen === 'publicLeaderboard') return
     if (user) setScreen('home')
     else setScreen('login')
-  }, [user])
+  }, [user, screen])
 
   const navigate = (s, ...args) => {
     setScreen(s)

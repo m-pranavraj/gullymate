@@ -193,9 +193,9 @@ export default function GroupDashboard({ onNavigate }) {
                   setCopiedShare(true)
                   setTimeout(() => setCopiedShare(false), 2000)
                 }}
-                  className="text-[10px] text-zinc-500 hover:text-blue-400 transition-colors px-1.5 py-0.5 rounded bg-zinc-800/80 border border-zinc-700/50 shrink-0"
+                  className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 text-white text-[11px] font-bold active:scale-90 transition-all shrink-0 shadow-lg shadow-blue-500/20"
                   title="Copy public leaderboard link">
-                  {copiedShare ? '✓' : '🔗'}
+                  {copiedShare ? '✓ Copied!' : '🔗 Share'}
                 </button>
             </div>
             <p className="text-[10px] text-gray-500 mt-0.5 flex items-center gap-2">

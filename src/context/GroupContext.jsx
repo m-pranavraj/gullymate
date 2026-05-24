@@ -8,17 +8,14 @@ const GroupContext = createContext(null)
 
 export function GroupProvider({ children }) {
   const { user } = useAuth()
-  const [groups, setGroups] = useState(() => storage.get(STORAGE_KEYS.GROUPS) || [])
-  const [activeGroupId, setActiveGroupId] = useState(() => {
-    const saved = storage.get(STORAGE_KEYS.ACTIVE_GROUP)
-    return saved?.id || null
-  })
-
-  const [sharedGroups, setSharedGroups] = useState(() => storage.get('gully_os_shared_groups') || [])
+  const [groups, setGroups] = useState([])
+  const [groupsLoaded, setGroupsLoaded] = useState(false)
+  const [activeGroupId, setActiveGroupId] = useState(null)
+  const [sharedGroups, setSharedGroups] = useState([])
   const [needsMigration, setNeedsMigration] = useState(false)
   const migrationAttempted = useRef(false)
+  const syncQueued = useRef(false)
 
-  // Derive activeGroup from owned groups OR shared groups
   const activeGroup = useMemo(() =>
     groups.find(g => g.id === activeGroupId) ||
     sharedGroups.find(g => g.id === activeGroupId) ||
@@ -26,19 +23,144 @@ export function GroupProvider({ children }) {
     [groups, sharedGroups, activeGroupId]
   )
 
-  // Persist to localStorage
-  useEffect(() => { storage.set(STORAGE_KEYS.GROUPS, groups) }, [groups])
-  useEffect(() => { storage.set(STORAGE_KEYS.ACTIVE_GROUP, activeGroup ? { id: activeGroup.id } : null) }, [activeGroup])
-  useEffect(() => { storage.set('gully_os_shared_groups', sharedGroups) }, [sharedGroups])
+  // ── Load data on mount ──────────────────────────────────────
+  useEffect(() => {
+    if (!user) {
+      setGroups([])
+      setGroupsLoaded(true)
+      return
+    }
 
-  // Schema auto-migration on startup: try to add missing columns
+    if (user.isGuest) {
+      const saved = storage.get(STORAGE_KEYS.GROUPS) || []
+      setGroups(saved)
+      const active = storage.get(STORAGE_KEYS.ACTIVE_GROUP)
+      if (active?.id) setActiveGroupId(active.id)
+      setGroupsLoaded(true)
+      return
+    }
+
+    const sb = getSupabase()
+    if (!sb) {
+      const saved = storage.get(STORAGE_KEYS.GROUPS) || []
+      setGroups(saved)
+      setGroupsLoaded(true)
+      return
+    }
+
+    ;(async () => {
+      try {
+        const { data, error } = await sb
+          .from('groups')
+          .select('*, group_players(*)')
+          .eq('owner_id', user.id)
+        if (error) throw error
+
+        const loaded = (data || []).map(g => {
+          const snapshot = g.snapshot || {}
+          const snapPlayers = snapshot.players || []
+          return {
+            id: g.id,
+            name: g.name,
+            shareCode: g.share_code || null,
+            createdAt: new Date(g.created_at).getTime(),
+            ownerId: g.owner_id,
+            players: (g.group_players || []).map(gp => {
+              const snap = snapPlayers.find(sp => sp.name === gp.name)
+              return {
+                name: gp.name,
+                userId: gp.user_id,
+                claimed: gp.claimed,
+                claimedByName: null,
+                stats: snap?.stats || { matches: 0, runs: 0, balls: 0, fours: 0, sixes: 0, wickets: 0, overs: 0, runsConceded: 0, catches: 0, stumpings: 0, fifties: 0, hundreds: 0, notOuts: 0, ducks: 0, highestScore: 0 },
+                history: snap?.history || [],
+              }
+            }),
+            matches: snapshot.matches || [],
+            activityLog: [],
+          }
+        })
+
+        // Merge with localStorage groups (handles offline guest data that was never synced)
+        const local = storage.get(STORAGE_KEYS.GROUPS) || []
+        const merged = [...loaded]
+        let hasLocalOnly = false
+        for (const lg of local) {
+          if (!merged.find(m => m.id === lg.id || m.shareCode === lg.shareCode)) {
+            const migrated = {
+              ...lg,
+              id: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(lg.id) ? lg.id : crypto.randomUUID(),
+            }
+            merged.push(migrated)
+            hasLocalOnly = true
+          }
+        }
+        setGroups(merged)
+        if (hasLocalOnly) {
+          storage.set(STORAGE_KEYS.GROUPS, merged)
+          syncQueued.current = true
+        }
+        const active = storage.get(STORAGE_KEYS.ACTIVE_GROUP)
+        if (active?.id && loaded.find(g => g.id === active.id)) setActiveGroupId(active.id)
+      } catch (e) {
+        console.warn('Failed to load groups from Supabase, using localStorage:', e)
+        const saved = storage.get(STORAGE_KEYS.GROUPS) || []
+        // Migrate old TEXT IDs to UUIDs and sync to Supabase so data isn't lost
+        const migrated = saved.map(g => ({
+          ...g,
+          id: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(g.id) ? g.id : crypto.randomUUID(),
+        }))
+        setGroups(migrated)
+        storage.set(STORAGE_KEYS.GROUPS, migrated)
+        syncQueued.current = true
+      }
+      setGroupsLoaded(true)
+    })()
+  }, [user])
+
+  // ── Sync localStorage groups to Supabase after fallback ────
+  useEffect(() => {
+    if (!syncQueued.current || !user?.id || user?.isGuest) return
+    syncQueued.current = false
+    const sb = getSupabase()
+    if (!sb) return
+    ;(async () => {
+      for (const g of groups) {
+        try {
+          await sb.from('groups').upsert({
+            id: g.id,
+            owner_id: user.id,
+            name: g.name,
+            share_code: g.shareCode || null,
+            snapshot: { players: g.players, matches: g.matches },
+            created_at: new Date(g.createdAt).toISOString(),
+          }).select().single()
+          for (const p of g.players) {
+            await sb.from('group_players').upsert({
+              group_id: g.id, name: p.name, user_id: p.userId || null, claimed: p.claimed || false,
+            }, { onConflict: 'group_id, name' })
+          }
+        } catch (_) {}
+      }
+    })()
+  }, [groups, user?.id, user?.isGuest])
+
+  // ── Persist to localStorage (guests only) ───────────────────
+  useEffect(() => {
+    if (user?.isGuest) storage.set(STORAGE_KEYS.GROUPS, groups)
+  }, [groups, user?.isGuest])
+
+  useEffect(() => {
+    storage.set(STORAGE_KEYS.ACTIVE_GROUP, activeGroup ? { id: activeGroup.id } : null)
+  }, [activeGroup])
+
+  // ── Schema migration ────────────────────────────────────────
   useEffect(() => {
     if (migrationAttempted.current) return
     migrationAttempted.current = true
     const sb = getSupabase()
     if (!sb) return
-
-    const runMigration = async () => {
+    ;(async () => {
       try {
         await sb.rpc('gully_migrate_v1')
         setNeedsMigration(false)
@@ -49,159 +171,53 @@ export function GroupProvider({ children }) {
         } catch (err) {
           if (err?.message?.includes('share_code') && err?.message?.includes('column')) {
             setNeedsMigration(true)
-            console.warn('Supabase schema needs migration.')
           }
         }
-      }
-    }
-    runMigration()
-  }, [])
-
-  const ensureGroupShareCode = useCallback((groupId) => {
-    let code = null
-    setGroups(prev => prev.map(g => {
-      if (g.id !== groupId) return g
-      if (g.shareCode) { code = g.shareCode; return g }
-      code = generateShareCode()
-      const updated = { ...g, shareCode: code }
-      syncGroupToSupabase(updated)
-      return updated
-    }))
-    return code
-  }, [syncGroupToSupabase])
-
-  // Backfill: after schema is OK and groups are populated, push all local groups
-  // to Supabase so share_code exists in the DB for share-code lookups.
-  const backfillRan = useRef(false)
-  useEffect(() => {
-    const sb = getSupabase()
-    if (!sb || !user?.id || user?.isGuest || needsMigration) return
-    if (backfillRan.current || groups.length === 0) return
-    backfillRan.current = true
-    ;(async () => {
-      // Ensure every group has a shareCode (backfill for groups created before shareCode feature existed)
-      let needsLocalUpdate = false
-      const groupsToSync = groups.map(g => {
-        if (!g.shareCode) {
-          needsLocalUpdate = true
-          return { ...g, shareCode: generateShareCode() }
-        }
-        return g
-      })
-      if (needsLocalUpdate) setGroups(groupsToSync)
-
-      for (const g of groupsToSync) {
-        try {
-          await sb.from('groups').upsert({
-            id: g.id,
-            owner_id: user.id,
-            name: g.name,
-            share_code: g.shareCode,
-            created_at: new Date(g.createdAt).toISOString(),
-          }, { onConflict: 'id' })
-          for (const p of g.players) {
-            await sb.from('group_players').upsert({
-              group_id: g.id,
-              name: p.name,
-              user_id: p.userId || null,
-              claimed: p.claimed || false,
-            }, { onConflict: 'group_id, name' })
-          }
-        } catch (_) {}
       }
     })()
-  }, [groups, needsMigration, user?.id, user?.isGuest])
+  }, [])
 
-  // Sync from Supabase on mount for logged-in users
-  useEffect(() => {
-    const sb = getSupabase()
-    if (!sb || !user?.id || user?.isGuest) return
-
-    const loadGroups = async () => {
-      try {
-        const { data: remoteGroups, error } = await sb
-          .from('groups')
-          .select('*, group_players(*)')
-          .eq('owner_id', user.id)
-
-        if (error) throw error
-        if (remoteGroups && remoteGroups.length > 0) {
-          const local = remoteGroups.map(g => ({
-            id: g.id,
-            name: g.name,
-            shareCode: g.share_code || null,
-            createdAt: new Date(g.created_at).getTime(),
-            ownerId: g.owner_id,
-            players: (g.group_players || []).map(p => ({
-              name: p.name,
-              userId: p.user_id,
-              claimed: p.claimed,
-              stats: { matches: 0, runs: 0, balls: 0, fours: 0, sixes: 0, wickets: 0, overs: 0, runsConceded: 0, catches: 0, stumpings: 0, fifties: 0, hundreds: 0, notOuts: 0, ducks: 0, highestScore: 0 },
-              history: [],
-            })),
-            matches: [],
-            activityLog: [],
-          }))
-          setGroups(prev => {
-            const merged = [...local]
-            prev.forEach(lg => {
-              const existing = merged.find(m => m.id === lg.id)
-              if (existing) {
-                existing.shareCode = existing.shareCode || lg.shareCode
-                existing.name = existing.name || lg.name
-                existing.createdAt = existing.createdAt || lg.createdAt
-                existing.ownerId = existing.ownerId || lg.ownerId
-                existing.matches = lg.matches || []
-                existing.activityLog = lg.activityLog || []
-                existing.players = existing.players.map(ep => {
-                  const lp = lg.players.find(p => p.name === ep.name)
-                  return lp ? { ...ep, stats: lp.stats, history: lp.history } : ep
-                })
-              } else {
-                merged.push(lg)
-              }
-            })
-            return merged
-          })
-        }
-      } catch (e) {
-        console.warn('Supabase group sync failed, using local:', e)
-      }
-    }
-    loadGroups()
-  }, [user?.id, user?.isGuest])
+  // ── Sync helper ─────────────────────────────────────────────
+  const isUUID = (s) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)
 
   const syncGroupToSupabase = useCallback(async (group) => {
     const sb = getSupabase()
     if (!sb || !user?.id || user?.isGuest) return
+
+    let effectiveId = group.id
+    // Migrate old non-UUID IDs (from localStorage) to UUID for Supabase compatibility
+    if (!isUUID(group.id)) {
+      effectiveId = crypto.randomUUID()
+      setGroups(prev => prev.map(g => g.id === group.id ? { ...g, id: effectiveId } : g))
+      if (activeGroupId === group.id) setActiveGroupId(effectiveId)
+    }
+
     try {
       await sb.from('groups').upsert({
-        id: group.id,
+        id: effectiveId,
         owner_id: user.id,
         name: group.name,
         share_code: group.shareCode || null,
-        snapshot: {
-          players: group.players,
-          matches: group.matches,
-        },
+        snapshot: { players: group.players, matches: group.matches },
         created_at: new Date(group.createdAt).toISOString(),
       }).select().single()
       for (const p of group.players) {
         await sb.from('group_players').upsert({
-          group_id: group.id,
+          group_id: effectiveId,
           name: p.name,
           user_id: p.userId || null,
           claimed: p.claimed || false,
         }, { onConflict: 'group_id, name' })
       }
     } catch (e) {
-      console.warn('Supabase group sync error:', e)
+      console.warn('Supabase sync error:', e)
     }
-  }, [user?.id, user?.isGuest])
+  }, [user?.id, user?.isGuest, activeGroupId])
 
+  // ── Group CRUD ──────────────────────────────────────────────
   const createGroup = useCallback((name) => {
     const group = {
-      id: Date.now().toString(),
+      id: crypto.randomUUID(),
       name: name.trim(),
       shareCode: generateShareCode(),
       createdAt: Date.now(),
@@ -223,18 +239,33 @@ export function GroupProvider({ children }) {
     if (sb && !user?.isGuest) await sb.from('groups').delete().eq('id', groupId)
   }, [user])
 
+  const ensureGroupShareCode = useCallback((groupId) => {
+    let code = null
+    setGroups(prev => prev.map(g => {
+      if (g.id !== groupId) return g
+      if (g.shareCode) { code = g.shareCode; return g }
+      code = generateShareCode()
+      const updated = { ...g, shareCode: code }
+      syncGroupToSupabase(updated)
+      return updated
+    }))
+    return code
+  }, [syncGroupToSupabase])
+
+  // ── Player management ───────────────────────────────────────
+  const makePlayer = (name) => ({
+    name,
+    userId: null,
+    claimed: false,
+    stats: { matches: 0, runs: 0, balls: 0, fours: 0, sixes: 0, wickets: 0, overs: 0, runsConceded: 0, catches: 0, stumpings: 0, fifties: 0, hundreds: 0, notOuts: 0, ducks: 0, highestScore: 0 },
+    history: [],
+  })
+
   const addPlayerToGroup = useCallback((groupId, playerName) => {
     setGroups(prev => prev.map(g => {
       if (g.id !== groupId) return g
       if (g.players.find(p => p.name.toLowerCase() === playerName.toLowerCase())) return g
-      const player = {
-        name: playerName,
-        userId: null,
-        claimed: false,
-        stats: { matches: 0, runs: 0, balls: 0, fours: 0, sixes: 0, wickets: 0, overs: 0, runsConceded: 0, catches: 0, stumpings: 0, fifties: 0, hundreds: 0, notOuts: 0, ducks: 0, highestScore: 0 },
-        history: [],
-      }
-      const updated = { ...g, players: [...g.players, player] }
+      const updated = { ...g, players: [...g.players, makePlayer(playerName)] }
       syncGroupToSupabase(updated)
       return updated
     }))
@@ -255,15 +286,7 @@ export function GroupProvider({ children }) {
     setGroups(prev => prev.map(g => {
       if (g.id !== groupId) return g
       const existing = new Set(g.players.map(p => p.name.toLowerCase()))
-      const newPlayers = names
-        .filter(n => !existing.has(n.toLowerCase()))
-        .map(name => ({
-          name,
-          userId: null,
-          claimed: false,
-          stats: { matches: 0, runs: 0, balls: 0, fours: 0, sixes: 0, wickets: 0, overs: 0, runsConceded: 0, catches: 0, stumpings: 0, fifties: 0, hundreds: 0, notOuts: 0, ducks: 0, highestScore: 0 },
-          history: [],
-        }))
+      const newPlayers = names.filter(n => !existing.has(n.toLowerCase())).map(makePlayer)
       const updated = { ...g, players: [...g.players, ...newPlayers] }
       syncGroupToSupabase(updated)
       return updated
@@ -271,6 +294,22 @@ export function GroupProvider({ children }) {
     addActivityToGroup(groupId, 'System', `${names.length} players added`)
   }, [syncGroupToSupabase])
 
+  const claimPlayerInGroup = useCallback((groupId, playerName, userId, userName) => {
+    setGroups(prev => prev.map(g => {
+      if (g.id !== groupId) return g
+      const updated = {
+        ...g,
+        players: g.players.map(p =>
+          p.name === playerName ? { ...p, userId, claimed: true, claimedByName: userName } : p
+        ),
+      }
+      syncGroupToSupabase(updated)
+      return updated
+    }))
+    addActivityToGroup(groupId, 'System', `Player "${playerName}" claimed by ${userName}`)
+  }, [syncGroupToSupabase])
+
+  // ── Match recording ─────────────────────────────────────────
   const recordMatchForGroup = useCallback((groupId, matchData, battingStatsA, battingStatsB, ballHistory) => {
     setGroups(prev => prev.map(g => {
       if (g.id !== groupId) return g
@@ -283,7 +322,7 @@ export function GroupProvider({ children }) {
         const bowledIn = (ballHistory || []).filter(b => b.bowler === p.name)
 
         const historyEntry = {
-          matchId: matchData.id || Date.now().toString(),
+          matchId: matchData.id || crypto.randomUUID(),
           date: matchData.date || Date.now(),
           teamA: matchData.teamA, teamB: matchData.teamB,
           runs: batted?.runs || 0,
@@ -319,7 +358,7 @@ export function GroupProvider({ children }) {
       })
 
       const matchRecord = {
-        id: matchData.id || Date.now().toString(),
+        id: matchData.id || crypto.randomUUID(),
         date: Date.now(),
         teamA: matchData.teamA, teamB: matchData.teamB,
         scoreA: matchData.scoreA, wicketsA: matchData.wicketsA,
@@ -328,14 +367,12 @@ export function GroupProvider({ children }) {
       }
 
       const updated = { ...g, players: updatedPlayers, matches: [matchRecord, ...g.matches].slice(0, 200) }
+      syncGroupToSupabase(updated)
 
-      // Also log to Supabase activities
       const recSb = getSupabase()
       if (recSb && user?.id && !user?.isGuest) {
         recSb.from('activities').insert({
-          group_id: groupId,
-          user_id: user.id,
-          user_name: user.name,
+          group_id: groupId, user_id: user.id, user_name: user.name,
           action: `Match recorded: ${matchData.teamA} vs ${matchData.teamB}`,
         }).then().catch(() => {})
       }
@@ -345,6 +382,7 @@ export function GroupProvider({ children }) {
     addActivityToGroup(groupId, 'System', `Match recorded: ${matchData.teamA} vs ${matchData.teamB}`)
   }, [user])
 
+  // ── Activity ────────────────────────────────────────────────
   const addActivityToGroup = useCallback((groupId, userName, action) => {
     setGroups(prev => prev.map(g => {
       if (g.id !== groupId) return g
@@ -353,45 +391,26 @@ export function GroupProvider({ children }) {
     }))
   }, [])
 
+  // ── Utilities ───────────────────────────────────────────────
   const getGroup = useCallback((id) => groups.find(g => g.id === id) || sharedGroups.find(g => g.id === id) || null, [groups, sharedGroups])
 
-  const setActiveGroupById = useCallback((id) => {
-    setActiveGroupId(id)
-  }, [])
+  const setActiveGroupById = useCallback((id) => { setActiveGroupId(id) }, [])
 
   const resetGroupStats = useCallback((groupId) => {
     setGroups(prev => prev.map(g => {
       if (g.id !== groupId) return g
-      return {
-        ...g,
-        players: g.players.map(p => ({
-          ...p,
-          stats: { matches: 0, runs: 0, balls: 0, fours: 0, sixes: 0, wickets: 0, overs: 0, runsConceded: 0, catches: 0, stumpings: 0, fifties: 0, hundreds: 0, notOuts: 0, ducks: 0, highestScore: 0 },
-          history: [],
-        })),
-        matches: [],
-      }
-    }))
-    addActivityToGroup(groupId, 'System', 'All stats reset')
-  }, [])
-
-  const claimPlayerInGroup = useCallback((groupId, playerName, userId, userName) => {
-    setGroups(prev => prev.map(g => {
-      if (g.id !== groupId) return g
       const updated = {
         ...g,
-        players: g.players.map(p =>
-          p.name === playerName
-            ? { ...p, userId, claimed: true, claimedByName: userName }
-            : p
-        ),
+        players: g.players.map(p => ({ ...p, stats: makePlayer('').stats, history: [] })),
+        matches: [],
       }
       syncGroupToSupabase(updated)
       return updated
     }))
-    addActivityToGroup(groupId, 'System', `Player "${playerName}" claimed by ${userName}`)
+    addActivityToGroup(groupId, 'System', 'All stats reset')
   }, [syncGroupToSupabase])
 
+  // ── Share code lookup ───────────────────────────────────────
   const getGroupByShareCode = useCallback(async (shareCode) => {
     if (!shareCode) return null
     const localMatch = [...groups, ...sharedGroups].find(g => g.shareCode === shareCode)
@@ -416,10 +435,7 @@ export function GroupProvider({ children }) {
             players: (data.group_players || []).map(p => {
               const snapPlayer = (snapshot.players || []).find(sp => sp.name === p.name)
               return {
-                name: p.name,
-                userId: p.user_id,
-                claimed: p.claimed,
-                claimedByName: null,
+                name: p.name, userId: p.user_id, claimed: p.claimed, claimedByName: null,
                 stats: snapPlayer?.stats || { matches: 0, runs: 0, balls: 0, fours: 0, sixes: 0, wickets: 0, overs: 0, runsConceded: 0, catches: 0, stumpings: 0, fifties: 0, hundreds: 0, notOuts: 0, ducks: 0, highestScore: 0 },
                 history: snapPlayer?.history || [],
               }
@@ -427,10 +443,7 @@ export function GroupProvider({ children }) {
             matches: snapshot.matches || [],
             activityLog: [],
           }
-          setSharedGroups(prev => {
-            if (prev.find(x => x.id === g.id)) return prev
-            return [...prev, g]
-          })
+          setSharedGroups(prev => { if (prev.find(x => x.id === g.id)) return prev; return [...prev, g] })
           return g
         }
       } catch (e) {
@@ -453,17 +466,23 @@ export function GroupProvider({ children }) {
       if (error) throw error
       if (!data) return null
       const snapshot = data.snapshot || {}
-      return {
-        name: data.name,
-        shareCode: data.share_code,
-        players: snapshot.players || [],
-        matches: snapshot.matches || [],
-      }
+      return { name: data.name, shareCode: data.share_code, players: snapshot.players || [], matches: snapshot.matches || [] }
     } catch (e) {
       console.warn('Public leaderboard lookup failed:', e)
       return null
     }
   }, [])
+
+  if (!groupsLoaded) {
+    return (
+      <div className="min-h-screen bg-pitch-dark flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-4xl mb-4 animate-bounce">🏏</div>
+          <p className="text-gray-400 text-sm">Loading groups...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <GroupContext.Provider value={{

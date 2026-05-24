@@ -9,8 +9,18 @@ export function AuthProvider({ children }) {
   const [users, setUsers] = useState(() => storage.get(STORAGE_KEYS.USERS) || [])
   const [initialized, setInitialized] = useState(false)
 
+  // Auto-login as guest if VITE_AUTH_SKIP_LOGIN is set
+  useEffect(() => {
+    if (import.meta.env.VITE_AUTH_SKIP_LOGIN) {
+      const name = import.meta.env.VITE_AUTH_SKIP_LOGIN === 'true' ? null : import.meta.env.VITE_AUTH_SKIP_LOGIN
+      const u = { name: name || `Player${Math.floor(Math.random() * 1000)}`, email: null, isGuest: true }
+      setUser(u)
+    }
+  }, [])
+
   // Init Supabase auth listener
   useEffect(() => {
+    if (import.meta.env.VITE_AUTH_SKIP_LOGIN) { setInitialized(true); return }
     if (!isSupabaseConfigured()) { setInitialized(true); return }
 
     const sb = getSupabase()
