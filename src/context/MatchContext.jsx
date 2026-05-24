@@ -41,13 +41,19 @@ export function MatchProvider({ children }) {
           .eq('owner_id', user.id)
           .order('created_at', { ascending: false })
         if (error) throw error
-        const loaded = (data || []).map(m => ({
-          id: m.id,
-          ...(m.match_data || {}),
-          createdAt: new Date(m.created_at).getTime(),
-          status: m.status || 'completed',
-          endedAt: m.ended_at ? new Date(m.ended_at).getTime() : undefined,
-        }))
+        const loaded = (data || []).map(m => {
+          const md = m.match_data || {}
+          // Strip nested match_data to clean up old buggy syncs
+          const { match_data: _, ...cleanMd } = md
+          return {
+            id: m.id,
+            ...cleanMd,
+            motm: m.motm || md.motm || null,
+            createdAt: new Date(m.created_at).getTime(),
+            status: m.status || 'completed',
+            endedAt: m.ended_at ? new Date(m.ended_at).getTime() : undefined,
+          }
+        })
         setMatches(loaded)
         // Restore live match from Supabase so progress isn't lost on tab close
         const live = loaded.find(m => m.status === 'live')
@@ -81,6 +87,8 @@ export function MatchProvider({ children }) {
   const syncMatchToSupabase = useCallback((match) => {
     const sb = getSupabase()
     if (!sb || !user?.id || user?.isGuest) return
+    // Strip any nested match_data to prevent exponential bloat
+    const { match_data: _, ...cleanState } = match
     sb.from('matches').upsert({
       id: match.id,
       owner_id: user.id,
@@ -90,11 +98,15 @@ export function MatchProvider({ children }) {
       score_b: match.scoreB || 0,
       wickets_a: match.wicketsA || 0,
       wickets_b: match.wicketsB || 0,
+      balls_a: match.ballsA || 0,
+      balls_b: match.ballsB || 0,
       status: match.status || 'live',
       winner: match.winner,
+      motm: match.motm || null,
       ground: match.ground,
       share_code: match.shareCode,
-      match_data: match,
+      group_id: match.groupId || null,
+      match_data: cleanState,
       created_at: new Date(match.createdAt || Date.now()).toISOString(),
       ended_at: match.endedAt ? new Date(match.endedAt).toISOString() : null,
     }).then().catch(e => console.warn('Match sync error:', e))
@@ -197,9 +209,9 @@ export function MatchProvider({ children }) {
     if (liveMatch?.id === id) setLiveMatch(prev => prev ? { ...prev, createdAt: newDate } : null)
   }, [liveMatch])
   const updateMatchMOTM = useCallback((id, motm) => {
-    setMatches(prev => prev.map(m => m.id === id ? { ...m, motm } : m))
+    setMatches(prev => { const m = prev.find(x => x.id === id); if (m) syncMatchToSupabase({ ...m, motm }); return prev.map(x => x.id === id ? { ...x, motm } : x) })
     if (liveMatch?.id === id) setLiveMatch(prev => prev ? { ...prev, motm } : null)
-  }, [liveMatch])
+  }, [liveMatch, syncMatchToSupabase])
 
   if (!matchesLoaded) {
     return (
