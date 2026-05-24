@@ -95,7 +95,14 @@ export default function CreateMatchScreen({ onNavigate, rematchData }) {
       resetSilenceTimer()
 
       if (event.results[event.results.length - 1]?.isFinal) {
-        let text = bestTranscript
+        // Use only the latest utterance to avoid accumulated partials
+        const last = event.results[event.results.length - 1]
+        let text = last[0].transcript
+        for (let j = 1; j < last.length; j++) {
+          if (last[j].confidence > last[0].confidence) {
+            text = last[j].transcript
+          }
+        }
         if (!text.trim()) return
         setAiThinking(true)
         try {
