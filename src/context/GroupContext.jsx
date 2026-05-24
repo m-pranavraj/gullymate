@@ -426,20 +426,26 @@ export function GroupProvider({ children }) {
         if (error) throw error
         if (data) {
           const snapshot = data.snapshot || {}
+          const snapPlayers = snapshot.players || []
+          // When RLS blocks group_players join (non-owner), fall back to snapshot players
+          const dbPlayers = data.group_players || []
+          const players = dbPlayers.length > 0
+            ? dbPlayers.map(p => {
+                const snap = snapPlayers.find(sp => sp.name === p.name)
+                return {
+                  name: p.name, userId: p.user_id, claimed: p.claimed, claimedByName: null,
+                  stats: snap?.stats || { matches: 0, runs: 0, balls: 0, fours: 0, sixes: 0, wickets: 0, overs: 0, runsConceded: 0, catches: 0, stumpings: 0, fifties: 0, hundreds: 0, notOuts: 0, ducks: 0, highestScore: 0 },
+                  history: snap?.history || [],
+                }
+              })
+            : snapPlayers  // RLS blocked — use snapshot directly
           const g = {
             id: data.id,
             name: data.name,
             shareCode: data.share_code,
             createdAt: new Date(data.created_at).getTime(),
             ownerId: data.owner_id,
-            players: (data.group_players || []).map(p => {
-              const snapPlayer = (snapshot.players || []).find(sp => sp.name === p.name)
-              return {
-                name: p.name, userId: p.user_id, claimed: p.claimed, claimedByName: null,
-                stats: snapPlayer?.stats || { matches: 0, runs: 0, balls: 0, fours: 0, sixes: 0, wickets: 0, overs: 0, runsConceded: 0, catches: 0, stumpings: 0, fifties: 0, hundreds: 0, notOuts: 0, ducks: 0, highestScore: 0 },
-                history: snapPlayer?.history || [],
-              }
-            }),
+            players,
             matches: snapshot.matches || [],
             activityLog: [],
           }

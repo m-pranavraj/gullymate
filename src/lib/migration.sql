@@ -103,6 +103,12 @@ CREATE POLICY "Players can view themselves"
     auth.uid() IN (SELECT owner_id FROM public.groups WHERE id = group_id)
   );
 
+DROP POLICY IF EXISTS "Anyone can view players by share code" ON public.group_players;
+CREATE POLICY "Anyone can view players by share code"
+  ON public.group_players FOR SELECT USING (
+    EXISTS (SELECT 1 FROM public.groups WHERE id = group_id AND share_code IS NOT NULL)
+  );
+
 -- 4. Player Stats (aggregate per player per group)
 CREATE TABLE IF NOT EXISTS public.player_stats (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
