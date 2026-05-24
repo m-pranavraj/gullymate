@@ -49,6 +49,9 @@ export function MatchProvider({ children }) {
           endedAt: m.ended_at ? new Date(m.ended_at).getTime() : undefined,
         }))
         setMatches(loaded)
+        // Restore live match from Supabase so progress isn't lost on tab close
+        const live = loaded.find(m => m.status === 'live')
+        if (live) setLiveMatch(live)
       } catch (e) {
         console.warn('Failed to load matches from Supabase:', e)
         const saved = storage.get('matches') || []

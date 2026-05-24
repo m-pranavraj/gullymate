@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from 'react'
 import { useGroups } from '../context/GroupContext'
 import { useAuth } from '../context/AuthContext'
+import { correctTranscript } from '../utils/groq'
 
 export default function GroupScreen({ onNavigate }) {
   const { groups, sharedGroups, needsMigration, createGroup, deleteGroup, setActiveGroupById, getGroupByShareCode } = useGroups()
@@ -69,6 +70,16 @@ export default function GroupScreen({ onNavigate }) {
   const handleCopyCode = async (code, id) => {
     try {
       await navigator.clipboard.writeText(code)
+      setCopiedId(id)
+      setTimeout(() => setCopiedId(null), 2000)
+    } catch {}
+  }
+
+  const getShareUrl = (code) => `${window.location.origin}${window.location.pathname}#/leaderboard/${code}`
+
+  const handleShareLink = async (code, id) => {
+    try {
+      await navigator.clipboard.writeText(getShareUrl(code))
       setCopiedId(id)
       setTimeout(() => setCopiedId(null), 2000)
     } catch {}
@@ -212,9 +223,10 @@ export default function GroupScreen({ onNavigate }) {
                     </div>
                     <div className="flex items-center gap-1">
                       {isOwner && group.shareCode && (
-                        <button onClick={(e) => { e.stopPropagation(); handleCopyCode(group.shareCode, group.id) }}
-                          className="text-[10px] text-zinc-500 hover:text-blue-400 px-1.5 py-1 transition-colors">
-                          {copiedId === group.id ? '✓' : '🔗'}
+                        <button onClick={(e) => { e.stopPropagation(); handleShareLink(group.shareCode, group.id) }}
+                          className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-blue-600 to-cyan-600 text-white text-[10px] font-bold active:scale-90 transition-all shadow-lg shadow-blue-500/20"
+                          title="Copy public leaderboard link">
+                          {copiedId === group.id ? '✓' : '🔗 Share'}
                         </button>
                       )}
                       {isOwner && (
@@ -224,12 +236,16 @@ export default function GroupScreen({ onNavigate }) {
                     </div>
                   </div>
                   {isOwner && group.shareCode && (
-                    <div className="mt-2 ml-4 flex items-center gap-2">
-                      <span className="text-[9px] text-zinc-600">Share code:</span>
+                    <div className="mt-2 ml-4 flex items-center gap-2 flex-wrap">
+                      <span className="text-[9px] text-zinc-600">Share:</span>
                       <code className="text-[11px] font-mono tracking-wider text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded">{group.shareCode}</code>
                       <button onClick={(e) => { e.stopPropagation(); handleCopyCode(group.shareCode, group.id) }}
-                        className="text-[10px] text-zinc-500 hover:text-blue-400 transition-colors">
-                        {copiedId === group.id ? '✓ Copied' : 'Copy'}
+                        className="text-[9px] text-zinc-500 hover:text-blue-400 transition-colors px-1.5 py-0.5">
+                        {copiedId === group.id ? '✓' : 'Copy code'}
+                      </button>
+                      <button onClick={(e) => { e.stopPropagation(); handleShareLink(group.shareCode, group.id) }}
+                        className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-blue-600 to-cyan-600 text-white text-[9px] font-bold active:scale-90 transition-all shadow-lg shadow-blue-500/20">
+                        {copiedId === group.id ? '✓ Copied' : '🔗 Share Link'}
                       </button>
                     </div>
                   )}

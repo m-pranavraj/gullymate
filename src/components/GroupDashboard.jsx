@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useRef } from 'react'
 import { useGroups } from '../context/GroupContext'
 import { useAuth } from '../context/AuthContext'
+import { correctTranscript } from '../utils/groq'
 
 const STAT_CATEGORIES = {
   batting: [
@@ -110,13 +111,16 @@ export default function GroupDashboard({ onNavigate }) {
       setVoiceInput(finalText)
     }
 
-    recognition.onend = () => {
+    recognition.onend = async () => {
       setIsVoiceListening(false)
       if (finalText.trim()) {
-        // Split by spoken "comma" word and punctuation commas
-        const names = finalText.trim()
-          .replace(/\bcomma\b/gi, ',')
-          .split(/,/).map(n => n.trim()).filter(n => n.length >= 2 && n.length < 30)
+        // AI-correct the transcript using known player names before splitting
+        const corrected = await correctTranscript(finalText.trim(), {
+          groupPlayers: group.players.map(p => p.name)
+        })
+        const text = (corrected || finalText).trim()
+        const names = text.replace(/\bcomma\b/gi, ',')
+          .split(/,/).map(n => n.trim()).filter(n => n.length >= 3 && n.length < 30)
         if (names.length > 0) {
           names.forEach(name => addPlayerToGroup(group.id, name))
         }
@@ -471,6 +475,20 @@ export default function GroupDashboard({ onNavigate }) {
             </div>
           )}
         </div>
+
+        {/* Share Link */}
+        <button onClick={() => {
+            let code = group.shareCode
+            if (!code) code = ensureGroupShareCode(group.id)
+            if (!code) return
+            const url = `${window.location.origin}${window.location.pathname}#/leaderboard/${code}`
+            navigator.clipboard.writeText(url)
+            setCopiedShare(true)
+            setTimeout(() => setCopiedShare(false), 2000)
+          }}
+          className="w-full py-3.5 rounded-2xl font-bold text-xs bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-lg shadow-blue-500/20 active:scale-[0.97] transition-all">
+          {copiedShare ? '✓ Link Copied!' : '🔗 Share Public Leaderboard Link'}
+        </button>
 
         {/* Actions */}
         <div className="flex gap-2.5">
