@@ -780,7 +780,9 @@ export default function LiveMatchScreen({ onNavigate, collabMatchId }) {
                     <span className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${p.name === currentBatsman ? 'bg-neon-green text-black' : 'bg-white/10'}`}>
                       {p.name[0]}
                     </span>
-                    <span className="flex-1">{p.name}</span>
+                    <span className="flex-1">{p.name}
+                      {(() => { const t = isBattingA ? 'A' : 'B'; return match[`captain${t}`] === p.name ? <span className="ml-1 text-[9px] px-1 py-0.5 rounded bg-yellow-500/20 text-yellow-400 font-bold">C</span> : match[`viceCaptain${t}`] === p.name ? <span className="ml-1 text-[9px] px-1 py-0.5 rounded bg-gray-300/20 text-gray-300 font-bold">VC</span> : match[`wicketKeeper${t}`] === p.name ? <span className="ml-1 text-[9px] px-1 py-0.5 rounded bg-purple-500/20 text-purple-400 font-bold">WK</span> : null })()}
+                    </span>
                     {p.name === currentBatsman && <span className="text-[10px] text-neon-green">Batting</span>}
                     {(p.runs > 0 || (p.balls || 0) > 0) && (
                       <span className="text-xs text-gray-400">{p.runs || 0}({p.balls || 0})</span>
@@ -816,7 +818,9 @@ export default function LiveMatchScreen({ onNavigate, collabMatchId }) {
                     <span className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${p.name === currentBowler ? 'bg-neon-blue text-black' : 'bg-white/10'}`}>
                       {p.name[0]}
                     </span>
-                    <span className="flex-1">{p.name}</span>
+                    <span className="flex-1">{p.name}
+                      {(() => { const t = isBattingA ? 'B' : 'A'; return match[`captain${t}`] === p.name ? <span className="ml-1 text-[9px] px-1 py-0.5 rounded bg-yellow-500/20 text-yellow-400 font-bold">C</span> : match[`viceCaptain${t}`] === p.name ? <span className="ml-1 text-[9px] px-1 py-0.5 rounded bg-gray-300/20 text-gray-300 font-bold">VC</span> : match[`wicketKeeper${t}`] === p.name ? <span className="ml-1 text-[9px] px-1 py-0.5 rounded bg-purple-500/20 text-purple-400 font-bold">WK</span> : null })()}
+                    </span>
                     {p.name === currentBowler && <span className="text-[10px] text-neon-blue">Bowling</span>}
                   </button>
                 ))
@@ -839,7 +843,7 @@ export default function LiveMatchScreen({ onNavigate, collabMatchId }) {
 
             {(() => {
               const inningsLabel = (num) => num === 1 ? 'Innings 1' : num === 2 ? 'Innings 2' : `Innings ${num}`
-              const renderBatting = (stats, teamName, isActive, batsmanKey) => (
+              const renderBatting = (stats, teamName, isActive, batsmanKey, teamLetter) => (
                 <div className="space-y-1 mb-3">
                   <p className="text-[10px] font-bold text-gray-500 uppercase mb-1">Batting — {teamName}</p>
                   <div className="flex text-[10px] text-gray-500 font-bold pb-1.5 border-b border-white/5">
@@ -850,7 +854,13 @@ export default function LiveMatchScreen({ onNavigate, collabMatchId }) {
                   {(stats || []).map((s, i) => (
                     <div key={i} className={`flex items-center text-xs py-2 border-b border-white/5 last:border-0 ${s.name === currentBatsman && isActive ? 'bg-neon-green/5 rounded-lg' : ''}`}>
                       <span className="flex-1 truncate">
-                        {s.name}{s.out ? <span className="text-red-400">†</span> : s.name === currentBatsman && isActive ? <span className="text-neon-green text-[10px]">*</span> : ''}
+                        {s.name}
+                        {teamLetter ? (() => { const t = teamLetter; return (
+                          match[`captain${t}`] === s.name ? <span className="ml-1 text-[9px] px-1 py-0.5 rounded bg-yellow-500/20 text-yellow-400 font-bold">C</span> :
+                          match[`viceCaptain${t}`] === s.name ? <span className="ml-1 text-[9px] px-1 py-0.5 rounded bg-gray-300/20 text-gray-300 font-bold">VC</span> :
+                          match[`wicketKeeper${t}`] === s.name ? <span className="ml-1 text-[9px] px-1 py-0.5 rounded bg-purple-500/20 text-purple-400 font-bold">WK</span> : null
+                        )})() : null}
+                        {s.out ? <span className="text-red-400">†</span> : s.name === currentBatsman && isActive ? <span className="text-neon-green text-[10px]">*</span> : ''}
                       </span>
                       <span className="w-8 text-center font-bold">{s.runs || 0}</span>
                       <span className="w-8 text-center text-gray-500">{s.balls || 0}</span>
@@ -862,7 +872,7 @@ export default function LiveMatchScreen({ onNavigate, collabMatchId }) {
                   {(!stats || stats.length === 0) && <p className="text-xs text-gray-500 italic py-2">Yet to bat</p>}
                 </div>
               )
-              const renderBowling = (teamPlayers, innNum) => {
+              const renderBowling = (teamPlayers, innNum, teamLetter) => {
                 const stats = {}
                 ;(teamPlayers || []).forEach(p => { stats[p.name] = { name: p.name, balls: 0, runs: 0, wkts: 0 } })
                 ballHistory.filter(b => (b.innings || 1) === innNum).forEach(b => {
@@ -876,7 +886,13 @@ export default function LiveMatchScreen({ onNavigate, collabMatchId }) {
                 if (rows.length === 0) return <p className="text-xs text-gray-500 italic py-2">No bowling data</p>
                 return rows.map((s, i) => (
                   <div key={i} className="flex items-center py-1.5 border-b border-white/5 last:border-0">
-                    <span className="flex-1 truncate">{s.name}</span>
+                    <span className="flex-1 truncate">{s.name}
+                      {teamLetter ? (() => { const t = teamLetter; return (
+                        match[`captain${t}`] === s.name ? <span className="ml-1 text-[9px] px-1 py-0.5 rounded bg-yellow-500/20 text-yellow-400 font-bold">C</span> :
+                        match[`viceCaptain${t}`] === s.name ? <span className="ml-1 text-[9px] px-1 py-0.5 rounded bg-gray-300/20 text-gray-300 font-bold">VC</span> :
+                        match[`wicketKeeper${t}`] === s.name ? <span className="ml-1 text-[9px] px-1 py-0.5 rounded bg-purple-500/20 text-purple-400 font-bold">WK</span> : null
+                      )})() : null}
+                    </span>
                     <span className="w-8 text-center text-gray-400">{s.balls > 0 ? `${Math.floor(s.balls / 6)}.${s.balls % 6}` : '-'}</span>
                     <span className="w-8 text-center">{s.runs}</span>
                     <span className="w-8 text-center text-yellow-400 font-bold">{s.wkts}</span>
@@ -893,7 +909,7 @@ export default function LiveMatchScreen({ onNavigate, collabMatchId }) {
                     <p className="text-xl font-black">{match.scoreA || 0}/{match.wicketsA || 0}</p>
                     <p className="text-[11px] text-gray-400">{match.ballsA || 0} balls | Extras: {match.extrasA || 0}</p>
                   </div>
-                  {renderBatting(match.battingStatsA, match.teamA, isBattingA)}
+                  {renderBatting(match.battingStatsA, match.teamA, isBattingA, null, 'A')}
                   <p className="text-[10px] font-bold text-gray-500 uppercase mb-1">Bowling — {match.teamB}</p>
                   <div className="text-xs space-y-1 mb-4">
                     <div className="flex text-[10px] text-gray-500 font-bold pb-1.5 border-b border-white/5">
@@ -901,7 +917,7 @@ export default function LiveMatchScreen({ onNavigate, collabMatchId }) {
                       <span className="w-8 text-center">R</span><span className="w-8 text-center">W</span>
                       <span className="w-10 text-center">Econ</span>
                     </div>
-                    {renderBowling(match.playersB, 1)}
+                    {renderBowling(match.playersB, 1, 'B')}
                   </div>
 
                   {/* ── Innings 2 ── */}
@@ -912,7 +928,7 @@ export default function LiveMatchScreen({ onNavigate, collabMatchId }) {
                         <p className="text-xl font-black">{match.scoreB || 0}/{match.wicketsB || 0}</p>
                         <p className="text-[11px] text-gray-400">{match.ballsB || 0} balls | Extras: {match.extrasB || 0}</p>
                       </div>
-                      {renderBatting(match.battingStatsB, match.teamB, !isBattingA)}
+                      {renderBatting(match.battingStatsB, match.teamB, !isBattingA, null, 'B')}
                       <p className="text-[10px] font-bold text-gray-500 uppercase mb-1">Bowling — {match.teamA}</p>
                       <div className="text-xs space-y-1">
                         <div className="flex text-[10px] text-gray-500 font-bold pb-1.5 border-b border-white/5">
@@ -920,7 +936,7 @@ export default function LiveMatchScreen({ onNavigate, collabMatchId }) {
                           <span className="w-8 text-center">R</span><span className="w-8 text-center">W</span>
                           <span className="w-10 text-center">Econ</span>
                         </div>
-                        {renderBowling(match.playersA, 2)}
+                        {renderBowling(match.playersA, 2, 'A')}
                       </div>
                     </>
                   )}

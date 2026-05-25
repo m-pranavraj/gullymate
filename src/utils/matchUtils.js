@@ -108,4 +108,7 @@ export const defaultRules = {
   totalOvers: 0,
   singleBatsman: true,
   trackWickets: false,
+  captainEnabled: false,
+  viceCaptainEnabled: false,
+  wicketKeeperEnabled: false,
 }

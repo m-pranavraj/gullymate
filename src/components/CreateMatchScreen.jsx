@@ -39,6 +39,12 @@ export default function CreateMatchScreen({ onNavigate, rematchData }) {
   const [localRules, setLocalRules] = useState(rematchData?.rules || globalRules || null)
   const [showRules, setShowRules] = useState(!!rematchData)
   const [jokerName, setJokerName] = useState(rematchData?.jokerName || '')
+  const [captainA, setCaptainA] = useState(rematchData?.captainA || null)
+  const [viceCaptainA, setViceCaptainA] = useState(rematchData?.viceCaptainA || null)
+  const [wicketKeeperA, setWicketKeeperA] = useState(rematchData?.wicketKeeperA || null)
+  const [captainB, setCaptainB] = useState(rematchData?.captainB || null)
+  const [viceCaptainB, setViceCaptainB] = useState(rematchData?.viceCaptainB || null)
+  const [wicketKeeperB, setWicketKeeperB] = useState(rematchData?.wicketKeeperB || null)
   const addPlayerInputRef = useRef(null)
   const recognitionRef = useRef(null)
   const silenceTimerRef = useRef(null)
@@ -384,6 +390,12 @@ export default function CreateMatchScreen({ onNavigate, rematchData }) {
       shareCode,
       rules: activeRules,
       jokerName: activeRules?.jokerEnabled ? jokerName.trim() || null : null,
+      captainA: activeRules?.captainEnabled ? captainA || null : null,
+      viceCaptainA: activeRules?.viceCaptainEnabled ? viceCaptainA || null : null,
+      wicketKeeperA: activeRules?.wicketKeeperEnabled ? wicketKeeperA || null : null,
+      captainB: activeRules?.captainEnabled ? captainB || null : null,
+      viceCaptainB: activeRules?.viceCaptainEnabled ? viceCaptainB || null : null,
+      wicketKeeperB: activeRules?.wicketKeeperEnabled ? wicketKeeperB || null : null,
       tossWinner: tossWinner === 'A' ? nameA : tossWinner === 'B' ? nameB : null,
       tossChoice: tossWinner ? tossChoice : null,
       scoreA: 0, scoreB: 0, wicketsA: 0, wicketsB: 0, ballsA: 0, ballsB: 0,
@@ -786,7 +798,30 @@ export default function CreateMatchScreen({ onNavigate, rematchData }) {
                         onClick={e => e.stopPropagation()}
                       />
                     ) : (
-                      <span onClick={() => startEditPlayer(p.id, p.name)} className="cursor-text hover:bg-white/10 rounded px-0.5">{p.name}</span>
+                      <span onClick={() => startEditPlayer(p.id, p.name)} className="cursor-text hover:bg-white/10 rounded px-0.5">{p.name}
+                        {(localRules?.captainEnabled || localRules?.viceCaptainEnabled || localRules?.wicketKeeperEnabled) && (
+                          <span className="inline-flex gap-0.5 ml-1">
+                            {localRules?.captainEnabled && (
+                              <button onClick={e => { e.stopPropagation(); setCaptainA(prev => prev === p.name ? null : p.name) }}
+                                className={`text-[9px] leading-tight px-1 py-0.5 rounded font-bold ${captainA === p.name ? 'bg-yellow-500 text-black' : 'bg-white/15 text-gray-400 hover:bg-white/30'}`}>
+                                C
+                              </button>
+                            )}
+                            {localRules?.viceCaptainEnabled && (
+                              <button onClick={e => { e.stopPropagation(); setViceCaptainA(prev => prev === p.name ? null : p.name) }}
+                                className={`text-[9px] leading-tight px-1 py-0.5 rounded font-bold ${viceCaptainA === p.name ? 'bg-gray-300 text-black' : 'bg-white/15 text-gray-400 hover:bg-white/30'}`}>
+                                VC
+                              </button>
+                            )}
+                            {localRules?.wicketKeeperEnabled && (
+                              <button onClick={e => { e.stopPropagation(); setWicketKeeperA(prev => prev === p.name ? null : p.name) }}
+                                className={`text-[9px] leading-tight px-1 py-0.5 rounded font-bold ${wicketKeeperA === p.name ? 'bg-purple-500 text-white' : 'bg-white/15 text-gray-400 hover:bg-white/30'}`}>
+                                WK
+                              </button>
+                            )}
+                          </span>
+                        )}
+                      </span>
                     )}
                     <button onClick={() => removePlayer('A', p.id)}
                       className="text-red-400/60 hover:text-red-400 text-xs ml-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -834,7 +869,30 @@ export default function CreateMatchScreen({ onNavigate, rematchData }) {
                         onClick={e => e.stopPropagation()}
                       />
                     ) : (
-                      <span onClick={() => startEditPlayer(p.id, p.name)} className="cursor-text hover:bg-white/10 rounded px-0.5">{p.name}</span>
+                      <span onClick={() => startEditPlayer(p.id, p.name)} className="cursor-text hover:bg-white/10 rounded px-0.5">{p.name}
+                        {(localRules?.captainEnabled || localRules?.viceCaptainEnabled || localRules?.wicketKeeperEnabled) && (
+                          <span className="inline-flex gap-0.5 ml-1">
+                            {localRules?.captainEnabled && (
+                              <button onClick={e => { e.stopPropagation(); setCaptainB(prev => prev === p.name ? null : p.name) }}
+                                className={`text-[9px] leading-tight px-1 py-0.5 rounded font-bold ${captainB === p.name ? 'bg-yellow-500 text-black' : 'bg-white/15 text-gray-400 hover:bg-white/30'}`}>
+                                C
+                              </button>
+                            )}
+                            {localRules?.viceCaptainEnabled && (
+                              <button onClick={e => { e.stopPropagation(); setViceCaptainB(prev => prev === p.name ? null : p.name) }}
+                                className={`text-[9px] leading-tight px-1 py-0.5 rounded font-bold ${viceCaptainB === p.name ? 'bg-gray-300 text-black' : 'bg-white/15 text-gray-400 hover:bg-white/30'}`}>
+                                VC
+                              </button>
+                            )}
+                            {localRules?.wicketKeeperEnabled && (
+                              <button onClick={e => { e.stopPropagation(); setWicketKeeperB(prev => prev === p.name ? null : p.name) }}
+                                className={`text-[9px] leading-tight px-1 py-0.5 rounded font-bold ${wicketKeeperB === p.name ? 'bg-purple-500 text-white' : 'bg-white/15 text-gray-400 hover:bg-white/30'}`}>
+                                WK
+                              </button>
+                            )}
+                          </span>
+                        )}
+                      </span>
                     )}
                     <button onClick={() => removePlayer('B', p.id)}
                       className="text-red-400/60 hover:text-red-400 text-xs ml-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -868,7 +926,7 @@ export default function CreateMatchScreen({ onNavigate, rematchData }) {
             🤖 AI Auto Setup
           </button>
           <button
-            onClick={() => { setTeamA(''); setTeamB(''); setPlayersA([]); setPlayersB([]); setGround(''); setTossWinner(null); setError('') }}
+            onClick={() => { setTeamA(''); setTeamB(''); setPlayersA([]); setPlayersB([]); setCaptainA(null); setViceCaptainA(null); setWicketKeeperA(null); setCaptainB(null); setViceCaptainB(null); setWicketKeeperB(null); setGround(''); setTossWinner(null); setError('') }}
             className="flex-1 py-3 rounded-2xl font-bold text-xs bg-white/10 text-gray-400 active:scale-95 transition-all"
           >
             ✕ Clear All
@@ -924,6 +982,9 @@ export default function CreateMatchScreen({ onNavigate, rematchData }) {
                 { key: 'twoBounceRetire', label: '🔄 Two Bounce Retire', desc: 'Retire after 2 bounce catches' },
                 { key: 'rebattingAllowed', label: '🔄 Re-batting', desc: 'Batsmen can bat again after dismissal' },
                 { key: 'trackWickets', label: '🎯 Track Wicket Types', desc: 'Ask bowled/caught/run out etc. on each wicket' },
+                { key: 'captainEnabled', label: '👑 Captain (C)', desc: 'Assign a captain for each team' },
+                { key: 'viceCaptainEnabled', label: '⭐ Vice Captain (VC)', desc: 'Assign a vice captain for each team' },
+                { key: 'wicketKeeperEnabled', label: '🧤 Wicket Keeper (WK)', desc: 'Assign a wicket keeper for each team' },
               ].map(rule => (
                 <div key={rule.key} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
                   <div className="flex-1 pr-3">
