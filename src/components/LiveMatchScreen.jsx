@@ -451,13 +451,13 @@ export default function LiveMatchScreen({ onNavigate, collabMatchId }) {
     addActivity('system', 'Super Over! Each team gets 1 over')
   }, [match, updateLiveMatch, addActivity, currentRules.maxBalls])
 
-  const handleEndMatch = useCallback(() => {
+  const handleEndMatch = useCallback((forceEnd) => {
     const winner = isChasing
       ? (currentScore > opponentScore ? (isBattingA ? match.teamA : match.teamB) : currentScore < opponentScore ? (isBattingA ? match.teamB : match.teamA) : null)
       : (currentScore > opponentScore ? (isBattingA ? match.teamA : match.teamB) : currentScore < opponentScore ? (isBattingA ? match.teamB : match.teamA) : null)
 
-    // If tied and not already a super over, offer super over
-    if (!winner && !isSuperOver && !match.superOver?.active) {
+    // If tied and not already a super over, offer super over (unless user clicked Draw)
+    if (!forceEnd && !winner && !isSuperOver && !match.superOver?.active) {
       setShowSuperOverDialog(true)
       setShowEndDialog(false)
       setShowTargetDialog(false)
@@ -679,7 +679,7 @@ export default function LiveMatchScreen({ onNavigate, collabMatchId }) {
             <p className="text-lg font-bold mb-1">Match is tied!</p>
             <p className="text-sm text-gray-400 mb-6">Each team gets 1 over. Highest scorer wins!</p>
             <div className="flex gap-3">
-              <button onClick={() => { setShowSuperOverDialog(false); setShowEndDialog(true) }}
+              <button onClick={() => handleEndMatch(true)}
                 className="flex-1 py-4 rounded-2xl font-bold border-2 border-white/20 text-white active:scale-[0.97] transition-all">Draw</button>
               <button onClick={startSuperOver}
                 className="flex-1 py-4 rounded-2xl font-bold bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-lg shadow-orange-500/30 active:scale-[0.97] transition-all">
