@@ -18,9 +18,7 @@ export default function CreateMatchScreen({ onNavigate, rematchData }) {
   const [playersA, setPlayersA] = useState(rematchData?.playersA || [])
   const [playersB, setPlayersB] = useState(rematchData?.playersB || [])
   const [ground, setGround] = useState(rematchData?.ground || '')
-  const [tossWinner, setTossWinner] = useState(null)
-  const [tossChoice, setTossChoice] = useState('bat')
-  const [tossAnimating, setTossAnimating] = useState(false)
+  const [battingFirst, setBattingFirst] = useState(null)
   const [error, setError] = useState('')
   const [voiceMode, setVoiceMode] = useState(false)
   const [isListening, setIsListening] = useState(false)
@@ -126,19 +124,9 @@ export default function CreateMatchScreen({ onNavigate, rematchData }) {
       handleStart()
       return
     }
-    if (lower.includes('toss') || lower.includes('bat') || lower.includes('bowl')) {
-      if (isTeamA) {
-        setTossWinner('A')
-        if (lower.includes('bowl')) setTossChoice('bowl')
-        else setTossChoice('bat')
-      } else if (isTeamB) {
-        setTossWinner('B')
-        if (lower.includes('bowl')) setTossChoice('bowl')
-        else setTossChoice('bat')
-      } else {
-        if (!tossWinner) setTossWinner(Math.random() > 0.5 ? 'A' : 'B')
-      }
-      return
+    if (lower.includes('bat')) {
+      if (isTeamA) { setBattingFirst('A'); return }
+      if (isTeamB) { setBattingFirst('B'); return }
     }
     if (lower.includes('random team') || lower.includes('shuffle')) {
       randomTeams()
@@ -272,9 +260,6 @@ export default function CreateMatchScreen({ onNavigate, rematchData }) {
       })
     }
 
-    if (result.tossWinner) setTossWinner(result.tossWinner)
-    if (result.tossChoice) setTossChoice(result.tossChoice)
-
     if (result.matchType) setMatchType(result.matchType)
     if (result.groupId) setSelectedGroupId(result.groupId)
     if (result.groupName) {
@@ -357,15 +342,7 @@ export default function CreateMatchScreen({ onNavigate, rematchData }) {
     setDragIndex(null)
   }
 
-  const handleToss = () => {
-    setTossAnimating(true)
-    setTimeout(() => {
-      const winner = Math.random() > 0.5 ? 'A' : 'B'
-      setTossWinner(winner)
-      setTossAnimating(false)
-      if (navigator.vibrate) navigator.vibrate(50)
-    }, 1200)
-  }
+
 
   const randomTeams = () => {
     const all = [...playersA, ...playersB]
@@ -396,10 +373,10 @@ export default function CreateMatchScreen({ onNavigate, rematchData }) {
       captainB: activeRules?.captainEnabled ? captainB || null : null,
       viceCaptainB: activeRules?.viceCaptainEnabled ? viceCaptainB || null : null,
       wicketKeeperB: activeRules?.wicketKeeperEnabled ? wicketKeeperB || null : null,
-      tossWinner: tossWinner === 'A' ? nameA : tossWinner === 'B' ? nameB : null,
-      tossChoice: tossWinner ? tossChoice : null,
+      tossWinner: battingFirst === 'A' ? nameA : battingFirst === 'B' ? nameB : null,
+      tossChoice: battingFirst ? 'bat' : null,
       scoreA: 0, scoreB: 0, wicketsA: 0, wicketsB: 0, ballsA: 0, ballsB: 0,
-      currentBatting: 'A', timeline: [],
+      currentBatting: battingFirst || 'A', timeline: [],
       battingStatsA: playersA.map(p => ({ name: p.name, runs: 0, balls: 0, fours: 0, sixes: 0, out: false, status: 'yetToBat' })),
       battingStatsB: playersB.map(p => ({ name: p.name, runs: 0, balls: 0, fours: 0, sixes: 0, out: false, status: 'yetToBat' })),
       bowlingStatsA: [], bowlingStatsB: [],
@@ -470,7 +447,7 @@ export default function CreateMatchScreen({ onNavigate, rematchData }) {
                 {isListening ? 'Listening...' : aiThinking ? 'AI Understanding...' : 'AI Voice Mode'}
               </p>
               <p className="text-[10px] text-gray-500">
-                Say anything naturally - "Team A is VK Boys" or "Add Sai, Santosh, Rahul" or "Team A won toss and chose to bat"
+                Say anything naturally - "Team A is VK Boys" or "Add Sai, Santosh, Rahul" or "Team A bats first"
               </p>
             </div>
           </div>
@@ -489,8 +466,7 @@ export default function CreateMatchScreen({ onNavigate, rematchData }) {
                 {aiResult.details ? aiResult.details :
                  aiResult.teamA ? `Team A: ${aiResult.teamA}` : ''}
                 {aiResult.teamB ? `${aiResult.teamA ? ' | ' : ''}Team B: ${aiResult.teamB}` : ''}
-                {aiResult.tossWinner ? ` | ${aiResult.tossWinner === 'A' ? (teamA || 'Team A') : (teamB || 'Team B')} won toss` : ''}
-                {aiResult.tossChoice ? ` & chose to ${aiResult.tossChoice}` : ''}
+
                 {aiResult.ground ? ` | Ground: ${aiResult.ground}` : ''}
               </p>
             </div>
@@ -548,54 +524,30 @@ export default function CreateMatchScreen({ onNavigate, rematchData }) {
           </div>
         </div>
 
-        {/* Toss */}
+        {/* Who bats first */}
         <div className="card-glass p-5 relative overflow-hidden">
           <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-yellow-400 to-orange-500" />
           <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-bold">🪙 Toss</p>
-              {tossWinner ? (
-                <p className="text-xs text-neon-green mt-0.5 flex items-center gap-1">
-                  <span>✓</span>
-                  {tossWinner === 'A' ? teamA || 'Team A' : teamB || 'Team B'} won & chose to {tossChoice}
-                </p>
-              ) : (
-                <p className="text-xs text-gray-500 mt-0.5">Tap to flip the coin</p>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              {tossWinner && (
-                <div className="flex bg-white/10 rounded-xl p-0.5">
-                  <button
-                    onClick={() => setTossChoice('bat')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${tossChoice === 'bat' ? 'bg-neon-green text-black' : 'text-gray-400'}`}
-                  >
-                    🏏 Bat
-                  </button>
-                  <button
-                    onClick={() => setTossChoice('bowl')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${tossChoice === 'bowl' ? 'bg-neon-blue text-black' : 'text-gray-400'}`}
-                  >
-                    ⚾ Bowl
-                  </button>
-                </div>
-              )}
-              <button
-                onClick={handleToss}
-                disabled={tossAnimating}
-                className={`px-5 py-3 rounded-2xl font-bold text-sm transition-all ${
-                  tossAnimating ? 'bg-yellow-500/50' : 'bg-gradient-to-r from-yellow-500 to-orange-500 text-black active:scale-90'
-                }`}
-              >
-                {tossAnimating ? '🪙 ...' : '🪙 Toss'}
-              </button>
-            </div>
+            <p className="text-sm font-bold">🏏 Who bats first?</p>
           </div>
-          {tossAnimating && (
-            <div className="mt-2 text-center">
-              <span className="inline-block text-3xl animate-bounce">🪙</span>
-            </div>
-          )}
+          <div className="flex gap-2 mt-3">
+            <button
+              onClick={() => setBattingFirst(battingFirst === 'A' ? null : 'A')}
+              className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${
+                battingFirst === 'A' ? 'bg-neon-green text-black' : 'bg-white/10 text-gray-400 hover:bg-white/20'
+              }`}
+            >
+              {teamA || 'Team A'}
+            </button>
+            <button
+              onClick={() => setBattingFirst(battingFirst === 'B' ? null : 'B')}
+              className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${
+                battingFirst === 'B' ? 'bg-neon-green text-black' : 'bg-white/10 text-gray-400 hover:bg-white/20'
+              }`}
+            >
+              {teamB || 'Team B'}
+            </button>
+          </div>
         </div>
 
         {/* Players */}
@@ -926,7 +878,7 @@ export default function CreateMatchScreen({ onNavigate, rematchData }) {
             🤖 AI Auto Setup
           </button>
           <button
-            onClick={() => { setTeamA(''); setTeamB(''); setPlayersA([]); setPlayersB([]); setCaptainA(null); setViceCaptainA(null); setWicketKeeperA(null); setCaptainB(null); setViceCaptainB(null); setWicketKeeperB(null); setGround(''); setTossWinner(null); setError('') }}
+            onClick={() => { setTeamA(''); setTeamB(''); setPlayersA([]); setPlayersB([]); setCaptainA(null); setViceCaptainA(null); setWicketKeeperA(null); setCaptainB(null); setViceCaptainB(null); setWicketKeeperB(null); setGround(''); setBattingFirst(null); setError('') }}
             className="flex-1 py-3 rounded-2xl font-bold text-xs bg-white/10 text-gray-400 active:scale-95 transition-all"
           >
             ✕ Clear All
