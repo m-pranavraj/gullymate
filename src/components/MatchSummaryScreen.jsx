@@ -174,30 +174,30 @@ export default function MatchSummaryScreen({ matchId, onNavigate }) {
   }
 
   // Compute bowling stats from ball history
-  // Innings 1: Team A bats, Team B bowls (A's battingStats, B's bowling)
-  // Innings 2: Team B bats, Team A bowls (B's battingStats, A's bowling)
   const computeBowlingStats = (teamPlayers, innings) => {
     const filtered = ballHistory.filter(b => b.innings === innings)
     if (!teamPlayers || filtered.length === 0) return []
     const stats = {}
-    teamPlayers.forEach(p => { stats[p.name] = { name: p.name, overs: 0, maidens: 0, runsConceded: 0, wickets: 0 } })
-    let ballsInOver = 0
+    teamPlayers.forEach(p => { stats[p.name] = { name: p.name, balls: 0, maidens: 0, runsConceded: 0, wickets: 0, maidenRuns: 0 } })
     filtered.forEach(b => {
       if (!stats[b.bowler]) return
-      if (b.label !== 'WD' && b.label !== 'NB') ballsInOver++
+      const isLegal = b.label !== 'WD' && b.label !== 'NB'
+      if (isLegal) stats[b.bowler].balls++
       stats[b.bowler].runsConceded += b.runs || 0
+      if (isLegal && (b.runs || 0) === 0) stats[b.bowler].maidenRuns += b.runs || 0
       if (b.type === 'wicket') stats[b.bowler].wickets++
-      if (ballsInOver === 6) { stats[b.bowler].overs += 6; ballsInOver = 0 }
     })
-    if (ballsInOver > 0) {
-      const lastBowler = filtered[filtered.length - 1]?.bowler
-      if (lastBowler && stats[lastBowler]) stats[lastBowler].overs += ballsInOver
-    }
-    return Object.values(stats)
+    return Object.values(stats).map(s => {
+      s.overs = s.balls
+      s.maidens = Math.floor(s.balls / 6) === 0 ? 0 : s.balls >= 6 ? Math.floor(s.balls / 6) : 0
+      return s
+    })
   }
 
-  const bowlingStatsA = computeBowlingStats(match.playersA, 2) // A bowls during innings 2 (B bats)
-  const bowlingStatsB = computeBowlingStats(match.playersB, 1) // B bowls during innings 1 (A bats)
+  // Determine who batted first
+  const battingFirst = match.battingFirst || 'A'
+  const bowlingStatsA = computeBowlingStats(match.playersA, battingFirst === 'A' ? 2 : 1)
+  const bowlingStatsB = computeBowlingStats(match.playersB, battingFirst === 'A' ? 1 : 2)
 
   const shareScorecard = () => {
     const text = `🏏 ${match.teamA} vs ${match.teamB}\n${nickname}\n\n${match.teamA}: ${match.scoreA}/${match.wicketsA}\n${match.teamB}: ${match.scoreB}/${match.wicketsB}\n\n${match.winner ? `🏆 ${match.winner} won!` : 'Match Drawn!'}\n\nMade with Gully Cricket`

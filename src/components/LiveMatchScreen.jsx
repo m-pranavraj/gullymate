@@ -33,6 +33,9 @@ export default function LiveMatchScreen({ onNavigate, collabMatchId }) {
   const [copied, setCopied] = useState(false)
   const [showWicketDialog, setShowWicketDialog] = useState(false)
   const [showFielderPicker, setShowFielderPicker] = useState(false)
+  const [showEditor, setShowEditor] = useState(false)
+  const [editingBallIndex, setEditingBallIndex] = useState(-1)
+  const [editBallRuns, setEditBallRuns] = useState('')
   const wicketPendingRef = useRef(null)
   const timelineRef = useRef(null)
   const recognitionRef = useRef(null)
@@ -246,13 +249,15 @@ export default function LiveMatchScreen({ onNavigate, collabMatchId }) {
           return
         }
       }
-      else commentaryLine = runs === 0 ? 'Dot ball!' : `${runs} run${runs > 1 ? 's' : ''}!`
+      else commentaryLine = runs === 0 ? getRandomLine('dot') || 'Dot ball!' : runs > 2 ? getRandomLine('celebrationRun') || `${runs} run${runs > 1 ? 's' : ''}!` : `${runs} run${runs > 1 ? 's' : ''}!`
       if (currentBatsman) {
-        newStats = newStats.map(s =>
-          s.name === currentBatsman
-            ? { ...s, runs: (s.runs || 0) + runs, balls: (s.balls || 0) + 1, fours: (s.fours || 0) + (runs === 4 ? 1 : 0), sixes: (s.sixes || 0) + (runs === 6 ? 1 : 0) }
-            : s
-        )
+        newStats = newStats.map(s => {
+          if (s.name !== currentBatsman) return s
+          const totalRuns = (s.runs || 0) + runs
+          if (s.runs < 50 && totalRuns >= 50) commentaryLine = getRandomLine('fifty') || 'FIFTY! 🎉'
+          else if (s.runs < 100 && totalRuns >= 100) commentaryLine = getRandomLine('milestone') || 'CENTURY! 💯'
+          return { ...s, runs: totalRuns, balls: (s.balls || 0) + 1, fours: (s.fours || 0) + (runs === 4 ? 1 : 0), sixes: (s.sixes || 0) + (runs === 6 ? 1 : 0) }
+        })
       }
     }
 
@@ -901,42 +906,72 @@ export default function LiveMatchScreen({ onNavigate, collabMatchId }) {
                 ))
               }
 
+              const bf = match.battingFirst || 'A'
+              // Innings 1: battingFirst team bats, other team bowls
+              const inns1 = {
+                battingStats: bf === 'A' ? match.battingStatsA : match.battingStatsB,
+                battingTeam: bf === 'A' ? match.teamA : match.teamB,
+                battingLetter: bf,
+                bowlingTeam: bf === 'A' ? match.teamB : match.teamA,
+                bowlingPlayers: bf === 'A' ? match.playersB : match.playersA,
+                bowlingLetter: bf === 'A' ? 'B' : 'A',
+                score: bf === 'A' ? (match.scoreA || 0) : (match.scoreB || 0),
+                wickets: bf === 'A' ? (match.wicketsA || 0) : (match.wicketsB || 0),
+                balls: bf === 'A' ? (match.ballsA || 0) : (match.ballsB || 0),
+                extras: bf === 'A' ? (match.extrasA || 0) : (match.extrasB || 0),
+              }
+              // Innings 2: other team bats
+              const inns2 = {
+                battingStats: bf === 'A' ? match.battingStatsB : match.battingStatsA,
+                battingTeam: bf === 'A' ? match.teamB : match.teamA,
+                battingLetter: bf === 'A' ? 'B' : 'A',
+                bowlingTeam: bf === 'A' ? match.teamA : match.teamB,
+                bowlingPlayers: bf === 'A' ? match.playersA : match.playersB,
+                bowlingLetter: bf === 'A' ? 'A' : 'B',
+                score: bf === 'A' ? (match.scoreB || 0) : (match.scoreA || 0),
+                wickets: bf === 'A' ? (match.wicketsB || 0) : (match.wicketsA || 0),
+                balls: bf === 'A' ? (match.ballsB || 0) : (match.ballsA || 0),
+                extras: bf === 'A' ? (match.extrasB || 0) : (match.extrasA || 0),
+              }
+              const inns1IsActive = isBattingA === (bf === 'A')
+              const inns2IsActive = !inns1IsActive
+
               return (
                 <>
                   {/* ── Innings 1 ── */}
                   <div className="mb-3 pb-3 border-b border-white/10">
-                    <p className="font-bold text-sm text-neon-blue mb-0.5">{inningsLabel(1)} · {match.teamA}</p>
-                    <p className="text-xl font-black">{match.scoreA || 0}/{match.wicketsA || 0}</p>
-                    <p className="text-[11px] text-gray-400">{match.ballsA || 0} balls | Extras: {match.extrasA || 0}</p>
+                    <p className="font-bold text-sm text-neon-blue mb-0.5">{inningsLabel(1)} · {inns1.battingTeam}</p>
+                    <p className="text-xl font-black">{inns1.score}/{inns1.wickets}</p>
+                    <p className="text-[11px] text-gray-400">{inns1.balls} balls | Extras: {inns1.extras}</p>
                   </div>
-                  {renderBatting(match.battingStatsA, match.teamA, isBattingA, null, 'A')}
-                  <p className="text-[10px] font-bold text-gray-500 uppercase mb-1">Bowling — {match.teamB}</p>
+                  {renderBatting(inns1.battingStats, inns1.battingTeam, inns1IsActive, null, inns1.battingLetter)}
+                  <p className="text-[10px] font-bold text-gray-500 uppercase mb-1">Bowling — {inns1.bowlingTeam}</p>
                   <div className="text-xs space-y-1 mb-4">
                     <div className="flex text-[10px] text-gray-500 font-bold pb-1.5 border-b border-white/5">
                       <span className="flex-1">Bowler</span><span className="w-8 text-center">O</span>
                       <span className="w-8 text-center">R</span><span className="w-8 text-center">W</span>
                       <span className="w-10 text-center">Econ</span>
                     </div>
-                    {renderBowling(match.playersB, 1, 'B')}
+                    {renderBowling(inns1.bowlingPlayers, 1, inns1.bowlingLetter)}
                   </div>
 
                   {/* ── Innings 2 ── */}
                   {(match.currentInnings || 1) >= 2 && (
                     <>
                       <div className="pt-3 border-t border-white/20 mb-3">
-                        <p className="font-bold text-sm text-emerald-400 mb-0.5">{inningsLabel(2)} · {match.teamB}</p>
-                        <p className="text-xl font-black">{match.scoreB || 0}/{match.wicketsB || 0}</p>
-                        <p className="text-[11px] text-gray-400">{match.ballsB || 0} balls | Extras: {match.extrasB || 0}</p>
+                        <p className="font-bold text-sm text-emerald-400 mb-0.5">{inningsLabel(2)} · {inns2.battingTeam}</p>
+                        <p className="text-xl font-black">{inns2.score}/{inns2.wickets}</p>
+                        <p className="text-[11px] text-gray-400">{inns2.balls} balls | Extras: {inns2.extras}</p>
                       </div>
-                      {renderBatting(match.battingStatsB, match.teamB, !isBattingA, null, 'B')}
-                      <p className="text-[10px] font-bold text-gray-500 uppercase mb-1">Bowling — {match.teamA}</p>
+                      {renderBatting(inns2.battingStats, inns2.battingTeam, inns2IsActive, null, inns2.battingLetter)}
+                      <p className="text-[10px] font-bold text-gray-500 uppercase mb-1">Bowling — {inns2.bowlingTeam}</p>
                       <div className="text-xs space-y-1">
                         <div className="flex text-[10px] text-gray-500 font-bold pb-1.5 border-b border-white/5">
                           <span className="flex-1">Bowler</span><span className="w-8 text-center">O</span>
                           <span className="w-8 text-center">R</span><span className="w-8 text-center">W</span>
                           <span className="w-10 text-center">Econ</span>
                         </div>
-                        {renderBowling(match.playersA, 2, 'A')}
+                        {renderBowling(inns2.bowlingPlayers, 2, inns2.bowlingLetter)}
                       </div>
                     </>
                   )}
@@ -1029,6 +1064,165 @@ export default function LiveMatchScreen({ onNavigate, collabMatchId }) {
         </div>
       )}
 
+      {/* ====== Editor Dialog ====== */}
+      {showEditor && (
+        <div className="fixed inset-0 z-50 bg-black/90 flex items-end sm:items-center p-4 animate-slide-up">
+          <div className="card-glass p-5 w-full max-w-sm mx-auto max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-bold text-lg"><span className="text-gradient">✏️</span> Edit Match</h2>
+              <button onClick={() => setShowEditor(false)} className="text-gray-400 text-sm">✕</button>
+            </div>
+
+            {/* Ball History */}
+            <p className="text-[10px] font-bold text-gray-500 uppercase mb-2">Ball by Ball</p>
+            <div className="space-y-1 mb-4 max-h-48 overflow-y-auto">
+              {(ballHistory || []).length === 0 ? (
+                <p className="text-xs text-gray-600 italic">No balls bowled yet</p>
+              ) : (
+                ballHistory.map((b, i) => (
+                  <div key={i} className="flex items-center gap-1.5 text-xs py-1.5 border-b border-white/5">
+                    <span className="text-gray-500 w-5">{i + 1}.</span>
+                    <span className="font-bold text-yellow-400 w-6">{b.label}</span>
+                    <span className="flex-1 truncate">{b.batsman} ◇ {b.bowler}</span>
+                    {editingBallIndex === i ? (
+                      <div className="flex items-center gap-1">
+                        <input type="number" min="0" max="6"
+                          value={editBallRuns} onChange={e => setEditBallRuns(e.target.value)}
+                          className="w-12 px-1.5 py-0.5 rounded bg-white/10 text-white text-xs outline-none text-center" autoFocus />
+                        <button onClick={() => {
+                          const newRuns = parseInt(editBallRuns) || 0
+                          const newHistory = [...ballHistory]
+                          newHistory[i] = { ...newHistory[i], runs: newRuns, label: newRuns === 0 ? '0' : String(newRuns) }
+                          // Recalculate all scores from ballHistory
+                          let newScoreA = 0, newScoreB = 0, newWicketsA = 0, newWicketsB = 0
+                          let newBallsA = 0, newBallsB = 0, newExtrasA = 0, newExtrasB = 0
+                          let newBoundariesA = 0, newBoundariesB = 0
+                          const bf = match.battingFirst || 'A'
+                          const resetStats = (stats) => (stats || []).map(s => ({ ...s, runs: 0, balls: 0, fours: 0, sixes: 0, out: false, status: s.out ? 'out' : 'yetToBat' }))
+                          let newBattingStatsA = resetStats(match.battingStatsA)
+                          let newBattingStatsB = resetStats(match.battingStatsB)
+                          newHistory.forEach(bh => {
+                            const isA = bf === 'A' ? (bh.innings === 1) : (bh.innings === 2)
+                            const isLegal = bh.label !== 'WD' && bh.label !== 'NB'
+                            if (isA) {
+                              if (isLegal) newBallsA++
+                              newScoreA += bh.runs || 0
+                              if (bh.label === 'WD' || bh.label === 'NB') newExtrasA++
+                              if (bh.runs === 4) newBoundariesA++
+                              if (bh.runs === 6) newBoundariesA++
+                              if (bh.type === 'wicket') newWicketsA++
+                              newBattingStatsA = newBattingStatsA.map(s =>
+                                s.name === bh.batsman
+                                  ? { ...s, runs: (s.runs || 0) + (bh.runs || 0), balls: isLegal ? (s.balls || 0) + 1 : (s.balls || 0), fours: bh.runs === 4 ? (s.fours || 0) + 1 : (s.fours || 0), sixes: bh.runs === 6 ? (s.sixes || 0) + 1 : (s.sixes || 0), out: bh.type === 'wicket' ? true : s.out, status: bh.type === 'wicket' ? 'out' : s.balls > 0 ? 'batting' : s.status }
+                                  : s
+                              )
+                            } else {
+                              if (isLegal) newBallsB++
+                              newScoreB += bh.runs || 0
+                              if (bh.label === 'WD' || bh.label === 'NB') newExtrasB++
+                              if (bh.runs === 4) newBoundariesB++
+                              if (bh.runs === 6) newBoundariesB++
+                              if (bh.type === 'wicket') newWicketsB++
+                              newBattingStatsB = newBattingStatsB.map(s =>
+                                s.name === bh.batsman
+                                  ? { ...s, runs: (s.runs || 0) + (bh.runs || 0), balls: isLegal ? (s.balls || 0) + 1 : (s.balls || 0), fours: bh.runs === 4 ? (s.fours || 0) + 1 : (s.fours || 0), sixes: bh.runs === 6 ? (s.sixes || 0) + 1 : (s.sixes || 0), out: bh.type === 'wicket' ? true : s.out, status: bh.type === 'wicket' ? 'out' : s.balls > 0 ? 'batting' : s.status }
+                                  : s
+                              )
+                            }
+                          })
+                          updateLiveMatch({
+                            scoreA: newScoreA, scoreB: newScoreB,
+                            wicketsA: newWicketsA, wicketsB: newWicketsB,
+                            ballsA: newBallsA, ballsB: newBallsB,
+                            extrasA: newExtrasA, extrasB: newExtrasB,
+                            boundariesA: newBoundariesA, boundariesB: newBoundariesB,
+                            battingStatsA: newBattingStatsA, battingStatsB: newBattingStatsB,
+                            ballHistory: newHistory,
+                          })
+                          setEditingBallIndex(-1)
+                          setEditBallRuns('')
+                        }} className="text-[10px] px-1.5 py-0.5 rounded bg-neon-green text-black font-bold">✓</button>
+                        <button onClick={() => { setEditingBallIndex(-1); setEditBallRuns('') }} className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-gray-400">✕</button>
+                      </div>
+                    ) : (
+                      <button onClick={() => { setEditingBallIndex(i); setEditBallRuns(String(b.runs || 0)) }}
+                        className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-gray-400 hover:bg-white/20">✏️</button>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Players */}
+            <p className="text-[10px] font-bold text-gray-500 uppercase mb-2">Players</p>
+            <div className="grid grid-cols-2 gap-2 mb-4">
+              <div>
+                <p className="text-[10px] font-bold text-neon-green mb-1">{match.teamA}</p>
+                {(match.playersA || []).map((p, i) => (
+                  <div key={i} className="flex items-center gap-1 text-xs py-1 border-b border-white/5">
+                    <span className="flex-1 truncate">{p.name}</span>
+                    <button onClick={() => {
+                      const newName = prompt('Edit name:', p.name)
+                      if (newName && newName.trim()) {
+                        const oldName = p.name
+                        const newPlayersA = match.playersA.map(pl => pl.name === oldName ? { ...pl, name: newName.trim() } : pl)
+                        const newBattingStatsA = (match.battingStatsA || []).map(s => s.name === oldName ? { ...s, name: newName.trim() } : s)
+                        updateLiveMatch({ playersA: newPlayersA, battingStatsA: newBattingStatsA })
+                      }
+                    }} className="text-[10px] px-1 rounded bg-white/10 text-gray-400 hover:bg-white/20">✏️</button>
+                    <button onClick={() => {
+                      const newPlayersA = match.playersA.filter(pl => pl.name !== p.name)
+                      const newBattingStatsA = (match.battingStatsA || []).filter(s => s.name !== p.name)
+                      updateLiveMatch({ playersA: newPlayersA, battingStatsA: newBattingStatsA })
+                    }} className="text-[10px] px-1 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30">✕</button>
+                  </div>
+                ))}
+                <button onClick={() => {
+                  const name = prompt('Enter player name:')
+                  if (name && name.trim()) {
+                    const COLORS = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9']
+                    const newPlayer = { id: crypto.randomUUID(), name: name.trim(), color: COLORS[(match.playersA?.length || 0) % COLORS.length] }
+                    const newStats = { name: name.trim(), runs: 0, balls: 0, fours: 0, sixes: 0, out: false, status: 'yetToBat' }
+                    updateLiveMatch({ playersA: [...(match.playersA || []), newPlayer], battingStatsA: [...(match.battingStatsA || []), newStats] })
+                  }
+                }} className="w-full mt-1 py-1.5 rounded-lg text-[10px] font-bold bg-white/10 text-gray-400 hover:bg-white/20">+ Add Player</button>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-neon-blue mb-1">{match.teamB}</p>
+                {(match.playersB || []).map((p, i) => (
+                  <div key={i} className="flex items-center gap-1 text-xs py-1 border-b border-white/5">
+                    <span className="flex-1 truncate">{p.name}</span>
+                    <button onClick={() => {
+                      const newName = prompt('Edit name:', p.name)
+                      if (newName && newName.trim()) {
+                        const oldName = p.name
+                        const newPlayersB = match.playersB.map(pl => pl.name === oldName ? { ...pl, name: newName.trim() } : pl)
+                        const newBattingStatsB = (match.battingStatsB || []).map(s => s.name === oldName ? { ...s, name: newName.trim() } : s)
+                        updateLiveMatch({ playersB: newPlayersB, battingStatsB: newBattingStatsB })
+                      }
+                    }} className="text-[10px] px-1 rounded bg-white/10 text-gray-400 hover:bg-white/20">✏️</button>
+                    <button onClick={() => {
+                      const newPlayersB = match.playersB.filter(pl => pl.name !== p.name)
+                      const newBattingStatsB = (match.battingStatsB || []).filter(s => s.name !== p.name)
+                      updateLiveMatch({ playersB: newPlayersB, battingStatsB: newBattingStatsB })
+                    }} className="text-[10px] px-1 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30">✕</button>
+                  </div>
+                ))}
+                <button onClick={() => {
+                  const name = prompt('Enter player name:')
+                  if (name && name.trim()) {
+                    const COLORS = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9']
+                    const newPlayer = { id: crypto.randomUUID(), name: name.trim(), color: COLORS[(match.playersB?.length || 0) % COLORS.length] }
+                    const newStats = { name: name.trim(), runs: 0, balls: 0, fours: 0, sixes: 0, out: false, status: 'yetToBat' }
+                    updateLiveMatch({ playersB: [...(match.playersB || []), newPlayer], battingStatsB: [...(match.battingStatsB || []), newStats] })
+                  }
+                }} className="w-full mt-1 py-1.5 rounded-lg text-[10px] font-bold bg-white/10 text-gray-400 hover:bg-white/20">+ Add Player</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="sticky top-0 z-30 bg-pitch-dark/90 backdrop-blur-xl border-b border-white/5 px-3 py-2.5 flex items-center justify-between">
         <button onClick={() => onNavigate('home')} className="text-xl hover:scale-110 transition-transform">←</button>
@@ -1049,6 +1243,10 @@ export default function LiveMatchScreen({ onNavigate, collabMatchId }) {
           <button onClick={() => { navigator.clipboard.writeText(`${window.location.origin}${window.location.pathname}#/live/${liveMatch.id}`); setCopied(true); setTimeout(() => setCopied(false), 2000) }}
             className="px-2.5 py-1.5 rounded-xl bg-neon-green/15 text-neon-green text-[10px] font-bold border border-neon-green/30 hover:bg-neon-green/25 transition-all">
             {copied ? '✅' : '🔗'}
+          </button>
+          <button onClick={() => setShowEditor(true)}
+            className="px-2.5 py-1.5 rounded-xl bg-yellow-500/15 text-yellow-400 text-[10px] font-bold border border-yellow-500/20 hover:bg-yellow-500/25 transition-all">
+            ✏️
           </button>
           <button onClick={() => setShowScoreCard(true)}
             className="px-2.5 py-1.5 rounded-xl bg-white/10 text-white text-[10px] font-bold hover:bg-white/20 transition-all">

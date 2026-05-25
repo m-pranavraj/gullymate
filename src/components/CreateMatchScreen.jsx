@@ -376,6 +376,7 @@ export default function CreateMatchScreen({ onNavigate, rematchData }) {
       tossWinner: battingFirst === 'A' ? nameA : battingFirst === 'B' ? nameB : null,
       tossChoice: battingFirst ? 'bat' : null,
       scoreA: 0, scoreB: 0, wicketsA: 0, wicketsB: 0, ballsA: 0, ballsB: 0,
+      battingFirst: battingFirst || 'A',
       currentBatting: battingFirst || 'A', timeline: [],
       battingStatsA: playersA.map(p => ({ name: p.name, runs: 0, balls: 0, fours: 0, sixes: 0, out: false, status: 'yetToBat' })),
       battingStatsB: playersB.map(p => ({ name: p.name, runs: 0, balls: 0, fours: 0, sixes: 0, out: false, status: 'yetToBat' })),
