@@ -836,75 +836,97 @@ export default function LiveMatchScreen({ onNavigate, collabMatchId }) {
               </h2>
               <button onClick={() => setShowScoreCard(false)} className="text-gray-400 text-sm">✕</button>
             </div>
-            <div className="text-center mb-4 pb-3 border-b border-white/10">
-              <p className="text-2xl font-black text-gradient">
-                {isBattingA ? match.teamA : match.teamB}: {currentScore}/{currentWickets}
-              </p>
-              <p className="text-xs text-gray-400">{currentBalls} balls | Extras: {match[extrasKey] || 0}</p>
-            </div>
-            <div className="space-y-1">
-              <div className="flex text-[10px] text-gray-500 font-bold pb-1.5 border-b border-white/5">
-                <span className="flex-1">Batsman</span>
-                <span className="w-8 text-center">R</span>
-                <span className="w-8 text-center">B</span>
-                <span className="w-8 text-center">4s</span>
-                <span className="w-8 text-center">6s</span>
-                <span className="w-8 text-center">SR</span>
-              </div>
-              {battingPlayers.map((s, i) => (
-                <div key={i} className={`flex items-center text-xs py-2 border-b border-white/5 last:border-0 ${s.name === currentBatsman ? 'bg-neon-green/5 rounded-lg' : ''}`}>
-                  <span className="flex-1 truncate">
-                    {s.name} {s.out ? <span className="text-red-400">†</span> : s.name === currentBatsman ? <span className="text-neon-green text-[10px]">*</span> : ''}
-                  </span>
-                  <span className="w-8 text-center font-bold">{s.runs || 0}</span>
-                  <span className="w-8 text-center text-gray-500">{s.balls || 0}</span>
-                  <span className="w-8 text-center text-emerald-400">{s.fours || 0}</span>
-                  <span className="w-8 text-center text-neon-green">{s.sixes || 0}</span>
-                  <span className="w-8 text-center text-gray-500">{s.balls > 0 ? ((s.runs / s.balls) * 100).toFixed(0) : '-'}</span>
-                </div>
-              ))}
-            </div>
 
-            {/* Bowling Summary */}
-            <div className="mt-4 pt-3 border-t border-white/10">
-              <div className="flex items-center gap-1.5 mb-2">
-                <span className="text-neon-blue">🎯</span>
-                <span className="font-bold text-xs">Bowling</span>
-                <span className="text-[10px] text-gray-500">({currentBowler || 'No bowler selected'})</span>
-              </div>
-              <div className="flex text-[10px] text-gray-500 font-bold pb-1.5 border-b border-white/5">
-                <span className="flex-1">Bowler</span>
-                <span className="w-8 text-center">O</span>
-                <span className="w-8 text-center">R</span>
-                <span className="w-8 text-center">W</span>
-                <span className="w-10 text-center">Econ</span>
-              </div>
-              <div className="text-xs">
-                {(() => {
-                  const bowlStats = {}
-                  const bowlTeam = isBattingA ? (match.playersB || []) : (match.playersA || [])
-                  bowlTeam.forEach(p => { bowlStats[p.name] = { name: p.name, legalBalls: 0, runs: 0, wkts: 0, overs: 0 } })
-                  let cumLegal = 0
-                  ballHistory.forEach(b => {
-                    if (!bowlStats[b.bowler]) return
-                    const isLegal = b.label !== 'WD' && b.label !== 'NB'
-                    if (isLegal) { bowlStats[b.bowler].legalBalls++; cumLegal++ }
-                    bowlStats[b.bowler].runs += b.runs || 0
-                    if (b.type === 'wicket') bowlStats[b.bowler].wkts++
-                    if (isLegal && cumLegal % 6 === 0) bowlStats[b.bowler].overs++
-                  })
-                  return Object.values(bowlStats).filter(s => s.legalBalls > 0 || s.runs > 0).map((s, i) => (
-                    <div key={i} className={`flex items-center py-1.5 border-b border-white/5 last:border-0 ${s.name === currentBowler ? 'bg-neon-blue/5 rounded-lg' : ''}`}>
-                      <span className="flex-1 truncate">{s.name}</span>
-                      <span className="w-8 text-center text-gray-400">{s.overs > 0 ? `${s.overs}.0` : s.legalBalls > 0 ? `0.${s.legalBalls}` : '-'}</span>
-                      <span className="w-8 text-center">{s.runs}</span>
-                      <span className="w-8 text-center text-yellow-400 font-bold">{s.wkts}</span>
-                      <span className="w-10 text-center text-gray-400">{s.legalBalls > 0 ? ((s.runs / s.legalBalls) * 6).toFixed(1) : '-'}</span>
+            {(() => {
+              const inningsLabel = (num) => num === 1 ? 'Innings 1' : num === 2 ? 'Innings 2' : `Innings ${num}`
+              const renderBatting = (stats, teamName, isActive, batsmanKey) => (
+                <div className="space-y-1 mb-3">
+                  <p className="text-[10px] font-bold text-gray-500 uppercase mb-1">Batting — {teamName}</p>
+                  <div className="flex text-[10px] text-gray-500 font-bold pb-1.5 border-b border-white/5">
+                    <span className="flex-1">Batsman</span><span className="w-8 text-center">R</span>
+                    <span className="w-8 text-center">B</span><span className="w-8 text-center">4s</span>
+                    <span className="w-8 text-center">6s</span><span className="w-8 text-center">SR</span>
+                  </div>
+                  {(stats || []).map((s, i) => (
+                    <div key={i} className={`flex items-center text-xs py-2 border-b border-white/5 last:border-0 ${s.name === currentBatsman && isActive ? 'bg-neon-green/5 rounded-lg' : ''}`}>
+                      <span className="flex-1 truncate">
+                        {s.name}{s.out ? <span className="text-red-400">†</span> : s.name === currentBatsman && isActive ? <span className="text-neon-green text-[10px]">*</span> : ''}
+                      </span>
+                      <span className="w-8 text-center font-bold">{s.runs || 0}</span>
+                      <span className="w-8 text-center text-gray-500">{s.balls || 0}</span>
+                      <span className="w-8 text-center text-emerald-400">{s.fours || 0}</span>
+                      <span className="w-8 text-center text-neon-green">{s.sixes || 0}</span>
+                      <span className="w-8 text-center text-gray-500">{s.balls > 0 ? ((s.runs / s.balls) * 100).toFixed(0) : '-'}</span>
                     </div>
-                  ))
-                })()}
-              </div>
-            </div>
+                  ))}
+                  {(!stats || stats.length === 0) && <p className="text-xs text-gray-500 italic py-2">Yet to bat</p>}
+                </div>
+              )
+              const renderBowling = (teamPlayers, innNum) => {
+                const stats = {}
+                ;(teamPlayers || []).forEach(p => { stats[p.name] = { name: p.name, balls: 0, runs: 0, wkts: 0 } })
+                ballHistory.filter(b => (b.innings || 1) === innNum).forEach(b => {
+                  if (!stats[b.bowler]) return
+                  const isLegal = b.label !== 'WD' && b.label !== 'NB'
+                  if (isLegal) stats[b.bowler].balls++
+                  stats[b.bowler].runs += b.runs || 0
+                  if (b.type === 'wicket') stats[b.bowler].wkts++
+                })
+                const rows = Object.values(stats).filter(s => s.balls > 0 || s.runs > 0)
+                if (rows.length === 0) return <p className="text-xs text-gray-500 italic py-2">No bowling data</p>
+                return rows.map((s, i) => (
+                  <div key={i} className="flex items-center py-1.5 border-b border-white/5 last:border-0">
+                    <span className="flex-1 truncate">{s.name}</span>
+                    <span className="w-8 text-center text-gray-400">{s.balls > 0 ? `${Math.floor(s.balls / 6)}.${s.balls % 6}` : '-'}</span>
+                    <span className="w-8 text-center">{s.runs}</span>
+                    <span className="w-8 text-center text-yellow-400 font-bold">{s.wkts}</span>
+                    <span className="w-10 text-center text-gray-400">{s.balls > 0 ? ((s.runs / s.balls) * 6).toFixed(1) : '-'}</span>
+                  </div>
+                ))
+              }
+
+              return (
+                <>
+                  {/* ── Innings 1 ── */}
+                  <div className="mb-3 pb-3 border-b border-white/10">
+                    <p className="font-bold text-sm text-neon-blue mb-0.5">{inningsLabel(1)} · {match.teamA}</p>
+                    <p className="text-xl font-black">{match.scoreA || 0}/{match.wicketsA || 0}</p>
+                    <p className="text-[11px] text-gray-400">{match.ballsA || 0} balls | Extras: {match.extrasA || 0}</p>
+                  </div>
+                  {renderBatting(match.battingStatsA, match.teamA, isBattingA)}
+                  <p className="text-[10px] font-bold text-gray-500 uppercase mb-1">Bowling — {match.teamB}</p>
+                  <div className="text-xs space-y-1 mb-4">
+                    <div className="flex text-[10px] text-gray-500 font-bold pb-1.5 border-b border-white/5">
+                      <span className="flex-1">Bowler</span><span className="w-8 text-center">O</span>
+                      <span className="w-8 text-center">R</span><span className="w-8 text-center">W</span>
+                      <span className="w-10 text-center">Econ</span>
+                    </div>
+                    {renderBowling(match.playersB, 1)}
+                  </div>
+
+                  {/* ── Innings 2 ── */}
+                  {(match.currentInnings || 1) >= 2 && (
+                    <>
+                      <div className="pt-3 border-t border-white/20 mb-3">
+                        <p className="font-bold text-sm text-emerald-400 mb-0.5">{inningsLabel(2)} · {match.teamB}</p>
+                        <p className="text-xl font-black">{match.scoreB || 0}/{match.wicketsB || 0}</p>
+                        <p className="text-[11px] text-gray-400">{match.ballsB || 0} balls | Extras: {match.extrasB || 0}</p>
+                      </div>
+                      {renderBatting(match.battingStatsB, match.teamB, !isBattingA)}
+                      <p className="text-[10px] font-bold text-gray-500 uppercase mb-1">Bowling — {match.teamA}</p>
+                      <div className="text-xs space-y-1">
+                        <div className="flex text-[10px] text-gray-500 font-bold pb-1.5 border-b border-white/5">
+                          <span className="flex-1">Bowler</span><span className="w-8 text-center">O</span>
+                          <span className="w-8 text-center">R</span><span className="w-8 text-center">W</span>
+                          <span className="w-10 text-center">Econ</span>
+                        </div>
+                        {renderBowling(match.playersA, 2)}
+                      </div>
+                    </>
+                  )}
+                </>
+              )
+            })()}
           </div>
         </div>
       )}
