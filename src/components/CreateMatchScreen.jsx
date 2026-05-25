@@ -381,7 +381,7 @@ export default function CreateMatchScreen({ onNavigate, rematchData }) {
       playersA, playersB,
       playerCount: Math.max(playersA.length, playersB.length),
       ground: ground.trim() || 'Gully Ground',
-      shareCode, nickname,
+      shareCode,
       rules: activeRules,
       jokerName: activeRules?.jokerEnabled ? jokerName.trim() || null : null,
       tossWinner: tossWinner === 'A' ? nameA : tossWinner === 'B' ? nameB : null,
