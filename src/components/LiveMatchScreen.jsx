@@ -91,16 +91,18 @@ export default function LiveMatchScreen({ onNavigate, collabMatchId }) {
   const availableBatsmen = currentRules.rebattingAllowed
     ? battingPlayers
     : battingPlayers.filter(p => !p.out)
-  // If joker exists and isn't already in batting stats, add a virtual entry
-  const jokerBattingEntry = jokerName && !availableBatsmen.find(p => p.name === jokerName)
+  // Joker batting: only create a fresh entry if they haven't batted yet for this team
+  const jokerInBattingStats = jokerName ? battingPlayers.find(p => p.name === jokerName) : null
+  const jokerBattingEntry = jokerName && !jokerInBattingStats
     ? { name: jokerName, runs: 0, balls: 0, fours: 0, sixes: 0, out: false, status: 'yetToBat' }
     : null
   const allAvailableBatsmen = jokerBattingEntry ? [...availableBatsmen, jokerBattingEntry] : availableBatsmen
-  // Build bowlers list; include joker in bowling options
+  // Build bowlers list; include joker (unless they're currently batting)
   const bowlingTeamPlayers = (isBattingA ? match.playersB : match.playersA) || []
-  const bowlersList = jokerName
-    ? [...bowlingTeamPlayers.filter(p => p.name !== jokerName), ...(isBattingA ? match.playersA : match.playersB)?.filter(p => p.name === jokerName) || []]
-    : bowlingTeamPlayers
+  let bowlersList = bowlingTeamPlayers
+  if (jokerName && jokerName !== currentBatsman && !bowlingTeamPlayers.some(p => p.name === jokerName)) {
+    bowlersList = [...bowlingTeamPlayers, { name: jokerName, color: '#9333EA' }]
+  }
 
   // AI Taunt every 6 balls
   useEffect(() => {
