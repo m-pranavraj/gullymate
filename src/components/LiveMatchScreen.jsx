@@ -1102,6 +1102,7 @@ export default function LiveMatchScreen({ onNavigate, collabMatchId }) {
                           let newBattingStatsA = resetStats(match.battingStatsA)
                           let newBattingStatsB = resetStats(match.battingStatsB)
                           newHistory.forEach(bh => {
+                            if ((bh.innings || 1) >= 3) return // skip super over
                             const isA = bf === 'A' ? (bh.innings === 1) : (bh.innings === 2)
                             const isLegal = bh.label !== 'WD' && bh.label !== 'NB'
                             if (isA) {

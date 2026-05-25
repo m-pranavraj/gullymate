@@ -168,19 +168,19 @@ export function MatchProvider({ children }) {
   const createMatch = useCallback((matchData) => {
     const newMatch = {
       id: crypto.randomUUID(),
+      currentInnings: 1,
       ...matchData,
       status: 'live',
       createdAt: Date.now(),
-      innings: [],
-      currentInnings: 0,
-      timeline: [],
+      innings: matchData.innings || [],
+      timeline: matchData.timeline || [],
     }
     setLiveMatch(newMatch)
     setMatches(prev => [newMatch, ...prev])
     syncMatchToSupabase(newMatch)
     addActivity('system', 'Match created')
     return newMatch
-  }, [syncMatchToSupabase])
+  }, [syncMatchToSupabase, addActivity])
 
   const updateLiveMatch = useCallback((updates) => {
     setLiveMatch(prev => {
