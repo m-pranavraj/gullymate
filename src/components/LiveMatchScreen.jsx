@@ -43,7 +43,19 @@ export default function LiveMatchScreen({ onNavigate, collabMatchId }) {
     if (collabMatchId) loadMatchById(collabMatchId)
   }, [collabMatchId])
 
-  if (!liveMatch) return null
+  if (!liveMatch) {
+    if (collabMatchId) {
+      return (
+        <div className="min-h-screen bg-pitch-dark flex items-center justify-center">
+          <div className="text-center">
+            <div className="text-4xl mb-4 animate-bounce">🏏</div>
+            <p className="text-gray-400 text-sm">Loading match...</p>
+          </div>
+        </div>
+      )
+    }
+    return null
+  }
 
   const match = liveMatch
   const battingTeam = match.currentBatting || 'A'
@@ -76,7 +88,9 @@ export default function LiveMatchScreen({ onNavigate, collabMatchId }) {
   const jokerName = (currentRules.jokerEnabled && match.jokerName) || null
 
   const battingPlayers = match[battingStatsKey] || []
-  const availableBatsmen = battingPlayers.filter(p => !p.out)
+  const availableBatsmen = currentRules.rebattingAllowed
+    ? battingPlayers
+    : battingPlayers.filter(p => !p.out)
   // If joker exists and isn't already in batting stats, add a virtual entry
   const jokerBattingEntry = jokerName && !availableBatsmen.find(p => p.name === jokerName)
     ? { name: jokerName, runs: 0, balls: 0, fours: 0, sixes: 0, out: false, status: 'yetToBat' }
@@ -300,14 +314,21 @@ export default function LiveMatchScreen({ onNavigate, collabMatchId }) {
       const newStats = [...battingPlayers, { name, runs: 0, balls: 0, fours: 0, sixes: 0, out: false, status: 'batting' }]
       updateLiveMatch({ currentBatsman: name, [battingStatsKey]: newStats })
     } else {
-      updateLiveMatch({ currentBatsman: name })
+      const updates = { currentBatsman: name }
+      if (currentRules.rebattingAllowed) {
+        // Reset out/status so previously-out players can bat again
+        updates[battingStatsKey] = battingPlayers.map(p =>
+          p.name === name ? { ...p, out: false, status: 'batting' } : p
+        )
+      }
+      updateLiveMatch(updates)
     }
     setShowBatsmanPicker(false)
     setCommentary(`🏏 ${name} is batting`)
     addActivity(user?.name || 'Player', `${name} came to bat`)
     setTimeout(() => setCommentary(''), 1500)
     if (navigator.vibrate) navigator.vibrate(30)
-  }, [updateLiveMatch, addActivity, user, jokerName, battingPlayers, battingStatsKey])
+  }, [updateLiveMatch, addActivity, user, jokerName, battingPlayers, battingStatsKey, currentRules])
 
   const selectBowler = useCallback((name) => {
     updateLiveMatch({ currentBowler: name })

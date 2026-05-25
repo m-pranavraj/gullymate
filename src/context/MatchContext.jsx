@@ -132,16 +132,13 @@ export function MatchProvider({ children }) {
   // ── Sync match to Supabase ──────────────────────────────────
   const syncMatchToSupabase = useCallback((match) => {
     const sb = getSupabase()
-    if (!sb) return
-    // Allow guests to sync if the match has an ownerId (collab mode)
+    if (!sb || !match?.id) return
     const ownerId = match.ownerId || user?.id
-    if (!ownerId) return
     // Strip any nested match_data to prevent exponential bloat
     const { match_data: _, ...cleanState } = match
     ownUpdateRef.current = true
-    sb.from('matches').upsert({
+    const data = {
       id: match.id,
-      owner_id: ownerId,
       team_a: match.teamA,
       team_b: match.teamB,
       score_a: match.scoreA || 0,
@@ -159,7 +156,12 @@ export function MatchProvider({ children }) {
       match_data: cleanState,
       created_at: new Date(match.createdAt || Date.now()).toISOString(),
       ended_at: match.endedAt ? new Date(match.endedAt).toISOString() : null,
-    }).then().catch(e => console.warn('Match sync error:', e))
+    }
+    // owner_id references auth.users — only set when available (logged-in users / DB-loaded matches)
+    if (ownerId) data.owner_id = ownerId
+    sb.from('matches').upsert(data)
+      .then()
+      .catch(e => console.warn('Match sync error:', e))
   }, [user?.id])
 
   // ── Match CRUD ──────────────────────────────────────────────

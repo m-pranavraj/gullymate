@@ -172,6 +172,9 @@ ALTER TABLE public.matches ADD COLUMN IF NOT EXISTS group_id UUID REFERENCES pub
 ALTER TABLE public.matches ADD COLUMN IF NOT EXISTS ground TEXT DEFAULT 'Gully Ground';
 ALTER TABLE public.matches ADD COLUMN IF NOT EXISTS motm TEXT;
 
+-- Allow guest-created matches (no auth.user reference)
+ALTER TABLE public.matches ALTER COLUMN owner_id DROP NOT NULL;
+
 ALTER TABLE public.matches ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Users can CRUD own matches" ON public.matches;
@@ -184,6 +187,11 @@ CREATE POLICY "Anyone can view by share code"
 
 -- Index for share code lookups
 CREATE INDEX IF NOT EXISTS idx_matches_share_code ON public.matches(share_code);
+
+-- Allow anyone (including guests via collab link) to insert live matches
+DROP POLICY IF EXISTS "Anyone can insert live matches" ON public.matches;
+CREATE POLICY "Anyone can insert live matches"
+  ON public.matches FOR INSERT WITH CHECK (status = 'live');
 
 -- Allow anyone (including guests via collab link) to update live matches
 DROP POLICY IF EXISTS "Anyone can update live matches" ON public.matches;
