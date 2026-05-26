@@ -3,10 +3,10 @@ import { createContext, useContext, useState, useCallback, useEffect } from 'rea
 const ThemeContext = createContext(null)
 
 export function ThemeProvider({ children }) {
-  const [theme, setTheme] = useState(() => localStorage.getItem('gully_os_theme') || 'dark')
+  const [theme, setTheme] = useState(() => { try { return localStorage.getItem('gully_os_theme') || 'dark' } catch { return 'dark' } })
 
   useEffect(() => {
-    localStorage.setItem('gully_os_theme', theme)
+    try { localStorage.setItem('gully_os_theme', theme) } catch {}
     document.documentElement.setAttribute('data-theme', theme)
   }, [theme])
 

@@ -36,7 +36,7 @@ function AppContent() {
   const [screen, setScreen] = useState(() => {
     const deep = parseHash()
     if (deep) return deep.screen
-    const savedUser = localStorage.getItem('gully_os_current_user')
+    const savedUser = (() => { try { return localStorage.getItem('gully_os_current_user') } catch { return null } })()
     return savedUser ? 'home' : 'login'
   })
   const [params, setParams] = useState(() => {
@@ -223,8 +223,8 @@ function LogoutScreen({ onBack }) {
 }
 
 class ErrorBoundary extends Component {
-  constructor(props) { super(props); this.state = { hasError: false } }
-  static getDerivedStateFromError() { return { hasError: true } }
+  constructor(props) { super(props); this.state = { hasError: false, error: null } }
+  static getDerivedStateFromError(error) { return { hasError: true, error } }
   componentDidCatch(error, info) { console.error('ErrorBoundary caught:', error, info) }
   render() {
     if (this.state.hasError) {
@@ -233,7 +233,8 @@ class ErrorBoundary extends Component {
           <div className="text-center">
             <div className="text-5xl mb-4">💥</div>
             <h2 className="text-xl font-bold text-white mb-2">Something went wrong</h2>
-            <p className="text-gray-400 text-sm mb-6">An unexpected error occurred. Tap below to retry.</p>
+            <p className="text-gray-400 text-sm mb-2">An unexpected error occurred. Tap below to retry.</p>
+            {this.state.error && <p className="text-red-400 text-[10px] mb-6 font-mono">{this.state.error.toString().slice(0, 200)}</p>}
             <button onClick={() => window.location.reload()}
               className="px-8 py-4 rounded-2xl font-bold bg-gradient-to-r from-neon-green to-neon-blue text-black active:scale-95 transition-all">
               🔄 Retry
