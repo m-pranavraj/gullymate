@@ -37,7 +37,7 @@ export function AuthProvider({ children }) {
         })
       }
       setInitialized(true)
-    })
+    }).catch(() => { setInitialized(true) })
 
     const { data: { subscription } } = sb.auth.onAuthStateChange((event, session) => {
       if (session?.user) {

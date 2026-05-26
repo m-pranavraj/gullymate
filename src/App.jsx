@@ -1,3 +1,4 @@
+import { Component } from 'react'
 import { useState, useEffect, useRef } from 'react'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { MatchProvider, useMatch } from './context/MatchContext'
@@ -221,18 +222,44 @@ function LogoutScreen({ onBack }) {
   return null
 }
 
+class ErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { hasError: false } }
+  static getDerivedStateFromError() { return { hasError: true } }
+  componentDidCatch(error, info) { console.error('ErrorBoundary caught:', error, info) }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-pitch-dark flex items-center justify-center p-8">
+          <div className="text-center">
+            <div className="text-5xl mb-4">💥</div>
+            <h2 className="text-xl font-bold text-white mb-2">Something went wrong</h2>
+            <p className="text-gray-400 text-sm mb-6">An unexpected error occurred. Tap below to retry.</p>
+            <button onClick={() => window.location.reload()}
+              className="px-8 py-4 rounded-2xl font-bold bg-gradient-to-r from-neon-green to-neon-blue text-black active:scale-95 transition-all">
+              🔄 Retry
+            </button>
+          </div>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
 export default function App() {
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <MatchProvider>
-          <GroupProvider>
-            <div className="min-h-screen bg-pitch-dark max-w-md mx-auto relative">
-              <AppContent />
-            </div>
-          </GroupProvider>
-        </MatchProvider>
-      </AuthProvider>
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <AuthProvider>
+          <MatchProvider>
+            <GroupProvider>
+              <div className="min-h-screen bg-pitch-dark max-w-md mx-auto relative">
+                <AppContent />
+              </div>
+            </GroupProvider>
+          </MatchProvider>
+        </AuthProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   )
 }
