@@ -164,6 +164,12 @@ export function MatchProvider({ children }) {
       .catch(e => console.warn('Match sync error:', e))
   }, [user?.id])
 
+  const addActivity = useCallback((userName, action, details) => {
+    const activity = { id: Date.now().toString() + Math.random(), user: userName || 'System', action, details, timestamp: Date.now() }
+    setActivities(prev => [activity, ...prev].slice(0, 200))
+    return activity
+  }, [])
+
   // ── Match CRUD ──────────────────────────────────────────────
   const createMatch = useCallback((matchData) => {
     const newMatch = {
@@ -208,7 +214,7 @@ export function MatchProvider({ children }) {
     syncMatchToSupabase(ended)
     addActivity('system', 'Match ended')
     return ended
-  }, [liveMatch, syncMatchToSupabase])
+  }, [liveMatch, syncMatchToSupabase, addActivity])
 
   const endMatchWithWinner = useCallback((winner) => {
     setLiveMatch(prev => {
@@ -219,7 +225,7 @@ export function MatchProvider({ children }) {
       addActivity('system', 'Match ended')
       return null
     })
-  }, [syncMatchToSupabase])
+  }, [syncMatchToSupabase, addActivity])
 
   const deleteMatch = useCallback((id) => {
     setMatches(prev => prev.filter(m => m.id !== id))
@@ -234,25 +240,19 @@ export function MatchProvider({ children }) {
     return false
   }, [matches])
 
-  const addActivity = useCallback((userName, action, details) => {
-    const activity = { id: Date.now().toString() + Math.random(), user: userName || 'System', action, details, timestamp: Date.now() }
-    setActivities(prev => [activity, ...prev].slice(0, 200))
-    return activity
-  }, [])
-
   const joinMatch = useCallback((code) => {
     const found = matches.find(m => m.shareCode === code && m.status === 'live')
     if (found) { setLiveMatch(found); addActivity('system', `Joined match ${found.teamA} vs ${found.teamB}`); return found }
     return null
-  }, [matches])
+  }, [matches, addActivity])
 
-  const saveRules = useCallback((newRules) => { setRules(newRules); addActivity('system', 'Rules updated') }, [])
+  const saveRules = useCallback((newRules) => { setRules(newRules); addActivity('system', 'Rules updated') }, [addActivity])
   const addCollaborator = useCallback((name, role = 'scorer') => {
     const collab = { id: Date.now().toString(), name, role, joinedAt: Date.now(), active: true }
     setCollaborators(prev => [...prev, collab])
     addActivity(name, `Joined as ${role}`)
     return collab
-  }, [])
+  }, [addActivity])
   const removeCollaborator = useCallback((id) => { setCollaborators(prev => prev.filter(c => c.id !== id)) }, [])
 
   const getMatch = useCallback((id) => matches.find(m => m.id === id) || null, [matches])
